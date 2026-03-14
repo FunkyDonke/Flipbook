@@ -1453,7 +1453,16 @@ function parseClassTxt(text, classId) {
 
     // ── Metadata ──
     if (trimmed.startsWith('coverUrl:')) { currentBook.coverUrl = trimmed.substring(9).trim(); return; }
-    if (trimmed.startsWith('icon:'))     { currentBook.icon     = trimmed.substring(5).trim(); return; }
+    if (trimmed.startsWith('icon:'))     {
+      const val = trimmed.substring(5).trim();
+      // যদি URL হয় → coverUrl হিসেবে ব্যবহার করো
+      if (val.startsWith('http://') || val.startsWith('https://')) {
+        currentBook.coverUrl = val;
+      } else {
+        currentBook.icon = val;
+      }
+      return;
+    }
 
     // ── TOC lines ──
     if (trimmed.startsWith('#') || trimmed.startsWith('-')) {
