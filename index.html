@@ -2760,6 +2760,7 @@ async function calibrateSize(){
   const cols=mobileMode?1:2;
   const maxW=Math.floor((vw-40)/cols), maxH=Math.floor(vh-24);
   const sc=Math.min(maxW/vp0.width,maxH/vp0.height);
+  // CSS display size (what user sees on screen)
   pageW=Math.floor(vp0.width*sc); pageH=Math.floor(vp0.height*sc);
 }
 
@@ -2771,20 +2772,60 @@ function sizeBook(){
   $('flip-container').style.width=pageW+'px';
 }
 
-// RENDER
+// RENDER — maximum quality, no compromise
+// Strategy: render at the PDF's natural high resolution,
+// then display at CSS size. This gives crystal-clear text.
 async function renderPage(num, canvas){
-  const ctx=canvas.getContext('2d'), dpr=window.devicePixelRatio||1;
+  const ctx = canvas.getContext('2d');
+
   if(num<1||num>totalPages){
+    // blank page
+    const dpr = window.devicePixelRatio||1;
     canvas.width=Math.round(pageW*dpr); canvas.height=Math.round(pageH*dpr);
     canvas.style.width=pageW+'px'; canvas.style.height=pageH+'px';
-    ctx.fillStyle='#f5f0e8'; ctx.fillRect(0,0,canvas.width,canvas.height); return;
+    ctx.fillStyle='#f5f0e8'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    return;
   }
+
   const {doc,localPage}=getDocAndPage(num);
-  const pg=await doc.getPage(localPage), vp0=pg.getViewport({scale:1});
-  const sc=(pageW/vp0.width)*dpr, vp=pg.getViewport({scale:sc});
-  canvas.width=Math.round(vp.width); canvas.height=Math.round(vp.height);
-  canvas.style.width=pageW+'px'; canvas.style.height=pageH+'px';
-  await pg.render({canvasContext:ctx,viewport:vp}).promise;
+  const pg = await doc.getPage(localPage);
+  const vp0 = pg.getViewport({scale:1});
+
+  // Step 1: calculate the CSS display scale (fit to screen)
+  const displayScale = pageW / vp0.width;
+
+  // Step 2: device pixel ratio for physical sharpness
+  const dpr = window.devicePixelRatio || 1;
+
+  // Step 3: extra quality multiplier — render at higher internal resolution
+  // than what the screen needs. This is the key to crystal-clear quality.
+  // We render at the larger of:
+  //   a) dpr × displayScale  (matches physical pixels exactly)
+  //   b) a scale that gives at least 300 DPI equivalent
+  // PDF points are 1/72 inch, so 300 DPI = 300/72 ≈ 4.167× scale
+  const targetDPI    = 300;
+  const pdfPointSize = 72; // PDF default
+  const qualityScale = targetDPI / pdfPointSize; // ~4.167
+
+  // Use whichever is larger: screen-accurate or 300 DPI quality
+  const renderScale = Math.max(displayScale * dpr, qualityScale);
+
+  const vp = pg.getViewport({scale: renderScale});
+
+  // Canvas physical pixels = render resolution
+  canvas.width  = Math.round(vp.width);
+  canvas.height = Math.round(vp.height);
+
+  // CSS size = what user sees (fit to screen)
+  canvas.style.width  = pageW + 'px';
+  canvas.style.height = pageH + 'px';
+
+  // Render at full quality
+  await pg.render({
+    canvasContext: ctx,
+    viewport: vp,
+    intent: 'display',
+  }).promise;
 }
 
 // SPREAD
