@@ -2695,28 +2695,38 @@ function jumpToPage(pageNum) {
 }
 
 // ── Highlight TOC item that matches current page ──
-function syncTOCHighlight() {
+function syncTOCHighlight(instant = false) {
   if (!currentBook) return;
-  const nodes = loadBookTOC(currentBook.id);
+
+  // Use tocNodes from book if available (has sources info), else fallback
+  const nodes = (currentBook.tocNodes && currentBook.tocNodes.length > 0)
+    ? currentBook.tocNodes
+    : loadBookTOC(currentBook.id);
   if (!nodes || nodes.length === 0) return;
+
   const { L } = s2p(currentSpread);
 
-  // flatten all nodes
+  // flatten all nodes recursively
   function flatten(list) {
     let out = [];
-    list.forEach(n => { out.push(n); if (n.children) out = out.concat(flatten(n.children)); });
+    list.forEach(n => {
+      out.push(n);
+      if (n.children && n.children.length) out = out.concat(flatten(n.children));
+    });
     return out;
   }
+
   const flat = flatten(nodes).filter(n => n.page);
-  // find the last node whose page <= current page
+  // find last node whose page <= current page
   let best = null;
   flat.forEach(n => { if (n.page <= L) best = n; });
   if (!best) return;
 
   $('toc-tree').querySelectorAll('.toc-item').forEach(el => {
-    if (el.querySelector('.toc-label')?.textContent === best.title) {
+    const lbl = el.querySelector('.toc-label');
+    if (lbl && lbl.textContent.trim() === best.title.trim()) {
       el.classList.add('active');
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      el.scrollIntoView({ block: 'nearest', behavior: instant ? 'instant' : 'smooth' });
     } else {
       el.classList.remove('active');
     }
@@ -2862,6 +2872,10 @@ async function openBook(book){
       }
 
       await renderSpread(currentSpread); updateNav();
+      // Resume: force highlight the correct TOC item after PDF is ready
+      if (savedPage > 1) {
+        setTimeout(() => syncTOCHighlight(true), 150);
+      }
       setProgress(100, 'Done!');
       setTimeout(() => {
         $('loading-overlay').style.opacity = '0';
