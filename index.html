@@ -1512,9 +1512,24 @@ function parseClassTxt(text, classId) {
 // DATA LAYER
 // ═══════════════════════════════════════════
 const LS_SCRIPTS    = 'dlib_scripts';
-const LS_TOC        = 'dlib_toc';   // { [bookId]: tocNodes[] }
-const LS_USERBOOKS  = 'dlib_userbooks';    // user-added books: { [classId]: [...] }
-const LS_CLASS_CACHE = 'dlib_classcache';  // parsed txt cache: { [classId]: books[] }
+const LS_TOC        = 'dlib_toc';
+const LS_USERBOOKS  = 'dlib_userbooks';
+const LS_CLASS_CACHE = 'dlib_classcache';
+const LS_LASTPAGE   = 'dlib_lastpage'; // { [bookId]: pageNum }
+
+// ── LastPage persistence ──
+function loadAllLastPages() {
+  try { return JSON.parse(localStorage.getItem(LS_LASTPAGE) || '{}'); }
+  catch { return {}; }
+}
+function saveLastPage(bookId, page) {
+  const all = loadAllLastPages();
+  all[bookId] = page;
+  localStorage.setItem(LS_LASTPAGE, JSON.stringify(all));
+}
+function getLastPage(bookId) {
+  return loadAllLastPages()[bookId] || 0;
+}
 
 function loadScripts(){
   try{ return JSON.parse(localStorage.getItem(LS_SCRIPTS)||'[]'); }
@@ -2251,9 +2266,11 @@ async function clearBookCache(bookId){
   for(const k of keys){
     if(k.startsWith(bookId+'_')) await cacheDel(k);
   }
-  // also reset the reading position
+  // reset reading position
   const idx=books.findIndex(b=>b.id===bookId);
   if(idx>=0){ books[idx].lastPage=0; saveBooks(books); }
+  // clear from dedicated lastPage storage
+  saveLastPage(bookId, 0);
 }
 
 // delete everything + reset all reading positions
@@ -2835,11 +2852,13 @@ async function openBook(book){
       if (window.innerWidth < window.innerHeight) enableMobile(true);
       await calibrateSize(); sizeBook();
 
-      if (book.lastPage && book.lastPage > 1) {
+      // Resume from last read page — check dedicated storage first, then book object
+      const savedPage = getLastPage(book.id) || book.lastPage || 0;
+      if (savedPage > 1) {
         currentSpread = mobileMode
-          ? Math.min(book.lastPage - 1, totalPages - 1)
-          : Math.min(Math.floor((book.lastPage - 1) / 2), Math.ceil(totalPages / 2) - 1);
-        $('loading-sub').textContent = 'Resuming from page ' + book.lastPage + '...';
+          ? Math.min(savedPage - 1, totalPages - 1)
+          : Math.min(Math.floor((savedPage - 1) / 2), Math.ceil(totalPages / 2) - 1);
+        $('loading-sub').textContent = 'Resuming from page ' + savedPage + '...';
       }
 
       await renderSpread(currentSpread); updateNav();
@@ -3116,6 +3135,7 @@ function updateNav(){
       books[idx].lastPage=L;
       currentBook.lastPage=L;
       saveBooks(books);
+      saveLastPage(currentBook.id, L); // persist for default books too
     }
   }
   // sync TOC highlight to current page
