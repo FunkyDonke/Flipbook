@@ -536,6 +536,41 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Hind Siliguri',ser
 .panel-btn.active{background:rgba(200,169,110,.1);border-color:var(--gold);color:var(--gold2);}
 .panel-btn svg{width:14px;height:14px;fill:currentColor;flex-shrink:0;}
 
+/* Quality Slider */
+#quality-wrap {
+  display:flex;flex-direction:column;gap:5px;
+  padding:8px 10px;
+  background:rgba(0,0,0,.3);
+  border:1px solid var(--border);
+  border-radius:8px;
+}
+#quality-wrap-label {
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;color:var(--gold);
+}
+#quality-wrap-label span { color:var(--text-dim); font-size:10px; }
+#quality-slider {
+  -webkit-appearance:none;appearance:none;
+  width:100%;height:4px;
+  background:linear-gradient(90deg, var(--gold) var(--pct,50%), rgba(200,169,110,.2) var(--pct,50%));
+  border-radius:2px;outline:none;cursor:pointer;
+}
+#quality-slider::-webkit-slider-thumb {
+  -webkit-appearance:none;appearance:none;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--gold2);
+  border:2px solid var(--wood);
+  box-shadow:0 0 6px rgba(240,200,74,.4);
+  cursor:pointer;transition:transform .15s;
+}
+#quality-slider::-webkit-slider-thumb:hover { transform:scale(1.2); }
+#quality-slider::-moz-range-thumb {
+  width:14px;height:14px;border-radius:50%;
+  background:var(--gold2);border:2px solid var(--wood);cursor:pointer;
+}
+/* hide in scroll mode */
+body.scroll-mode #quality-wrap { opacity:.35; pointer-events:none; }
+
 /* panel content area (for TOC later) */
 #panel-content{
   flex:1;overflow-y:auto;padding:12px 14px;
@@ -593,6 +628,54 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Hind Siliguri',ser
 /* Mobile mode */
 body.mobile-mode #right-page{display:none;}
 body.mobile-mode #left-page{border-radius:3px;}
+
+/* ════════════════════════════════
+   SCROLL MODE
+════════════════════════════════ */
+#scroll-view {
+  display:none;
+  position:absolute;inset:0;z-index:5;
+  overflow-y:auto;overflow-x:hidden;
+  background:var(--bg);
+  padding:20px 0;
+  scroll-behavior:smooth;
+}
+#scroll-view::-webkit-scrollbar{width:6px;}
+#scroll-view::-webkit-scrollbar-track{background:rgba(0,0,0,.2);}
+#scroll-view::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+#scroll-view::-webkit-scrollbar-thumb:hover{background:var(--gold);}
+
+#scroll-pages {
+  display:flex;flex-direction:column;
+  align-items:center;gap:12px;
+  padding-bottom:40px;
+}
+
+.scroll-page-wrap {
+  position:relative;
+  background:var(--cream);
+  box-shadow:0 4px 24px rgba(0,0,0,.7);
+  border-radius:2px;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.scroll-page-wrap canvas {
+  display:block;
+  image-rendering:high-quality;
+  image-rendering:-webkit-optimize-contrast;
+}
+.scroll-pnum {
+  position:absolute;bottom:6px;right:10px;
+  font-size:10px;color:#999;font-family:serif;
+  pointer-events:none;
+}
+
+/* Scroll mode active state */
+body.scroll-mode #stage { display:none; }
+body.scroll-mode #scroll-view { display:block; }
+body.scroll-mode #btn-scroll-mode { background:rgba(200,169,110,.1);border-color:var(--gold);color:var(--gold2); }
+/* hide flip controls in scroll mode */
+body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
 
 /* ════════════════════════════════
    LOADING & ERROR
@@ -867,6 +950,18 @@ body.mobile-mode #left-page{border-radius:3px;}
         <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
         Single Page
       </button>
+      <button class="panel-btn" id="btn-scroll-mode" title="Scroll Mode — original size">
+        <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+        Scroll Mode
+      </button>
+      <!-- Quality Slider -->
+      <div id="quality-wrap">
+        <div id="quality-wrap-label">
+          <span>🖼 Render Quality</span>
+          <span id="quality-label-val">2×</span>
+        </div>
+        <input type="range" id="quality-slider" min="1" max="4" step="0.5" value="2"/>
+      </div>
       <button class="panel-btn" id="btn-fs" title="Fullscreen">
         <svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
         <span>Fullscreen</span>
@@ -888,6 +983,7 @@ body.mobile-mode #left-page{border-radius:3px;}
 
   <!-- RIGHT: BOOK STAGE -->
   <div id="reader-stage-wrap">
+    <!-- FLIP MODE -->
     <div id="stage">
       <div id="book">
         <div class="pp" id="left-page"><canvas id="cvL"></canvas><div class="pnum" id="numL"></div></div>
@@ -897,6 +993,10 @@ body.mobile-mode #left-page{border-radius:3px;}
           <div class="flip-face flip-face-back"><canvas id="cvFB"></canvas></div>
         </div>
       </div>
+    </div>
+    <!-- SCROLL MODE -->
+    <div id="scroll-view">
+      <div id="scroll-pages"></div>
     </div>
   </div>
 
@@ -2496,7 +2596,11 @@ function renderTOC(nodes) {
         }
         // Priority 2: page number → jump in giant PDF
         if (node.page && node.page >= 1 && totalPages > 0) {
-          jumpToPage(node.page);
+          if (scrollMode) {
+            jumpToPageScroll(node.page);
+          } else {
+            jumpToPage(node.page);
+          }
           return;
         }
         // Priority 3: nothing — do nothing
@@ -2750,6 +2854,46 @@ function getDocAndPage(globalPageNum){
   return { doc: partDocs[docIdx], localPage: globalPageNum - partOffsets[docIdx] };
 }
 
+// RENDER QUALITY — user-controlled multiplier (1x to 4x)
+// Saved in localStorage so it persists across sessions
+const LS_QUALITY = 'dlib_render_quality';
+let renderQuality = parseFloat(localStorage.getItem(LS_QUALITY) || '2');
+
+function initQualitySlider() {
+  const slider = $('quality-slider');
+  const label  = $('quality-label-val');
+  if (!slider) return;
+
+  // restore saved value
+  slider.value = renderQuality;
+  label.textContent = renderQuality + '×';
+  updateSliderTrack(slider);
+
+  let _qualityTimer = null;
+  slider.addEventListener('input', () => {
+    renderQuality = parseFloat(slider.value);
+    label.textContent = renderQuality + '×';
+    updateSliderTrack(slider);
+    localStorage.setItem(LS_QUALITY, renderQuality);
+
+    // debounce re-render so it doesn't fire on every pixel drag
+    clearTimeout(_qualityTimer);
+    _qualityTimer = setTimeout(async () => {
+      if (currentBook && !scrollMode && totalPages > 0) {
+        await renderSpread(currentSpread);
+      }
+    }, 300);
+  });
+}
+
+function updateSliderTrack(slider) {
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const val = parseFloat(slider.value);
+  const pct = ((val - min) / (max - min) * 100).toFixed(1) + '%';
+  slider.style.setProperty('--pct', pct);
+}
+
 // SIZE
 async function calibrateSize(){
   const {doc,localPage}=getDocAndPage(1);
@@ -2772,14 +2916,11 @@ function sizeBook(){
   $('flip-container').style.width=pageW+'px';
 }
 
-// RENDER — maximum quality, no compromise
-// Strategy: render at the PDF's natural high resolution,
-// then display at CSS size. This gives crystal-clear text.
+// RENDER — quality controlled by user slider
 async function renderPage(num, canvas){
   const ctx = canvas.getContext('2d');
 
   if(num<1||num>totalPages){
-    // blank page
     const dpr = window.devicePixelRatio||1;
     canvas.width=Math.round(pageW*dpr); canvas.height=Math.round(pageH*dpr);
     canvas.style.width=pageW+'px'; canvas.style.height=pageH+'px';
@@ -2788,45 +2929,146 @@ async function renderPage(num, canvas){
   }
 
   const {doc,localPage}=getDocAndPage(num);
-  const pg = await doc.getPage(localPage);
+  const pg  = await doc.getPage(localPage);
   const vp0 = pg.getViewport({scale:1});
 
-  // Step 1: calculate the CSS display scale (fit to screen)
+  // CSS display scale (fit page to screen)
   const displayScale = pageW / vp0.width;
 
-  // Step 2: device pixel ratio for physical sharpness
-  const dpr = window.devicePixelRatio || 1;
-
-  // Step 3: extra quality multiplier — render at higher internal resolution
-  // than what the screen needs. This is the key to crystal-clear quality.
-  // We render at the larger of:
-  //   a) dpr × displayScale  (matches physical pixels exactly)
-  //   b) a scale that gives at least 300 DPI equivalent
-  // PDF points are 1/72 inch, so 300 DPI = 300/72 ≈ 4.167× scale
-  const targetDPI    = 300;
-  const pdfPointSize = 72; // PDF default
-  const qualityScale = targetDPI / pdfPointSize; // ~4.167
-
-  // Use whichever is larger: screen-accurate or 300 DPI quality
-  const renderScale = Math.max(displayScale * dpr, qualityScale);
+  // User quality multiplier (1x = screen-accurate, 4x = ultra-sharp)
+  // Also factor in device pixel ratio so it looks right on HiDPI screens
+  const dpr          = window.devicePixelRatio || 1;
+  const renderScale  = displayScale * Math.max(dpr, renderQuality);
 
   const vp = pg.getViewport({scale: renderScale});
 
-  // Canvas physical pixels = render resolution
   canvas.width  = Math.round(vp.width);
   canvas.height = Math.round(vp.height);
-
-  // CSS size = what user sees (fit to screen)
   canvas.style.width  = pageW + 'px';
   canvas.style.height = pageH + 'px';
 
-  // Render at full quality
   await pg.render({
     canvasContext: ctx,
     viewport: vp,
     intent: 'display',
   }).promise;
 }
+
+// ═══════════════════════════════════════════
+// SCROLL MODE
+// ═══════════════════════════════════════════
+let scrollMode = false;
+let _scrollRendering = false;
+let _scrollAbort = null;
+
+async function renderScrollMode() {
+  if (_scrollRendering) {
+    _scrollAbort = true;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  _scrollAbort = false;
+  _scrollRendering = true;
+
+  const container = $('scroll-pages');
+  container.innerHTML = '';
+
+  const wrap = $('reader-stage-wrap');
+  // Scroll mode: use full available width (single column)
+  const availW = wrap ? wrap.clientWidth - 32 : window.innerWidth - 32;
+  const dpr = window.devicePixelRatio || 1;
+
+  for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+    if (_scrollAbort) break;
+
+    const { doc, localPage } = getDocAndPage(pageNum);
+    const pg = await doc.getPage(localPage);
+    const vp0 = pg.getViewport({ scale: 1 });
+
+    // Scale: fit width OR original size — whichever is larger (no shrinking)
+    const fitScale    = availW / vp0.width;
+    // Original 1:1 scale with DPR (true physical pixels)
+    // 72 PDF points = 1 inch, screen DPI ~96, so 1:1 = 96/72 ≈ 1.33×
+    const screenScale = (window.screen.width / window.screen.availWidth) || 1;
+    // Use fit scale but ensure at least 1:1 quality
+    const cssScale    = Math.max(fitScale, 1.0);
+
+    // Render at cssScale × dpr for maximum sharpness
+    const renderScale = cssScale * Math.max(dpr, 2);
+    const vp = pg.getViewport({ scale: renderScale });
+
+    const cssW = Math.round(vp0.width  * cssScale);
+    const cssH = Math.round(vp0.height * cssScale);
+
+    const pageWrap = document.createElement('div');
+    pageWrap.className = 'scroll-page-wrap';
+    pageWrap.style.width  = cssW + 'px';
+    pageWrap.style.height = cssH + 'px';
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(vp.width);
+    canvas.height = Math.round(vp.height);
+    canvas.style.width  = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+
+    const pnum = document.createElement('div');
+    pnum.className = 'scroll-pnum';
+    pnum.textContent = pageNum;
+
+    pageWrap.appendChild(canvas);
+    pageWrap.appendChild(pnum);
+    container.appendChild(pageWrap);
+
+    // Render this page
+    const ctx = canvas.getContext('2d');
+    await pg.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
+  }
+
+  _scrollRendering = false;
+}
+
+function enableScrollMode(on) {
+  scrollMode = on;
+  document.body.classList.toggle('scroll-mode', on);
+  $('btn-scroll-mode').classList.toggle('active', on);
+
+  if (on) {
+    // Switch to scroll mode
+    renderScrollMode();
+    // Update page counter via scroll position
+    $('scroll-view').onscroll = syncScrollPageCounter;
+  } else {
+    // Back to flip mode — re-render current spread
+    _scrollAbort = true;
+    renderSpread(currentSpread);
+  }
+}
+
+function syncScrollPageCounter() {
+  const wraps = $('scroll-pages').querySelectorAll('.scroll-page-wrap');
+  const scrollTop = $('scroll-view').scrollTop;
+  const viewH = $('scroll-view').clientHeight;
+  let current = 1;
+  wraps.forEach((el, i) => {
+    const top = el.offsetTop - $('scroll-pages').offsetTop;
+    if (top <= scrollTop + viewH / 2) current = i + 1;
+  });
+  $('page-counter').textContent = current + ' / ' + totalPages;
+}
+
+// Jump to page in scroll mode
+function jumpToPageScroll(pageNum) {
+  const wraps = $('scroll-pages').querySelectorAll('.scroll-page-wrap');
+  const idx = Math.max(0, Math.min(pageNum - 1, wraps.length - 1));
+  if (wraps[idx]) {
+    wraps[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// Scroll mode button
+$('btn-scroll-mode').addEventListener('click', () => {
+  if (!currentBook) return;
+  enableScrollMode(!scrollMode);
+});
 
 // SPREAD
 function s2p(s){ return mobileMode?{L:s+1,R:s+1}:{L:s*2+1,R:s*2+2}; }
@@ -2998,6 +3240,14 @@ $('btn-back').addEventListener('click',()=>{
   document.title='📚 Digital Library';
   document.body.style.filter='';
   renderTOC([]);
+  // reset scroll mode
+  if (scrollMode) {
+    scrollMode = false;
+    _scrollAbort = true;
+    document.body.classList.remove('scroll-mode');
+    $('btn-scroll-mode').classList.remove('active');
+    $('scroll-pages').innerHTML = '';
+  }
 });
 $('btn-retry').addEventListener('click',()=>{
   $('error-box').style.display='none';
@@ -3014,6 +3264,7 @@ $('btn-retry').addEventListener('click',()=>{
 window.addEventListener('load', () => {
   renderClassScreen();
   showClassScreen();
+  initQualitySlider();
 });
 </script>
 </body>
