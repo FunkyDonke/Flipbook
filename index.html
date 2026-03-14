@@ -1249,10 +1249,11 @@ function parseClassTxt(text, classId) {
     let m;
     while ((m = blockRe.exec(val)) !== null) {
       const inner = m[1].trim();
-      const slashIdx = inner.lastIndexOf('/');
-      if (slashIdx < 0) continue;
-      const scriptsPart = inner.substring(0, slashIdx).trim();
-      const fileId      = inner.substring(slashIdx + 1).trim();
+      // separator is | (pipe) — NOT / because script URLs contain /
+      const pipeIdx = inner.lastIndexOf('|');
+      if (pipeIdx < 0) continue;
+      const scriptsPart = inner.substring(0, pipeIdx).trim();
+      const fileId      = inner.substring(pipeIdx + 1).trim();
       if (!fileId) continue;
       // scripts: comma-separated URLs
       const scriptUrls = scriptsPart.split(',').map(s => s.trim()).filter(Boolean);
