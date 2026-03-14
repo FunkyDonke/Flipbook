@@ -1,0 +1,2765 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 Digital Library</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;600&family=Cinzel:wght@600;800&family=IM+Fell+English:ital@1&display=swap');
+
+:root {
+  --bg:         #110a04;
+  --wood:       #1e1108;
+  --wood2:      #2d1a0e;
+  --wood3:      #3d2212;
+  --gold:       #c8a96e;
+  --gold2:      #f0c84a;
+  --cream:      #f5f0e8;
+  --cream2:     #e8e0d0;
+  --red:        #8b1a1a;
+  --text-gold:  rgba(240,200,74,.85);
+  --text-dim:   rgba(200,169,110,.6);
+  --border:     rgba(200,169,110,.2);
+  --border2:    rgba(200,169,110,.45);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-user-drag:none;}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Noto Serif Bengali',serif;background:var(--bg);}
+
+/* ════════════════════════════════
+   CLASS SELECTION SCREEN (Screen 1)
+════════════════════════════════ */
+#class-screen {
+  position:fixed;inset:0;
+  background:var(--bg);
+  display:flex;flex-direction:column;
+  z-index:15;
+  overflow:hidden;
+}
+#class-screen::before {
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    repeating-linear-gradient(87deg,transparent 0,transparent 12px,rgba(0,0,0,.04) 12px,rgba(0,0,0,.04) 13px),
+    repeating-linear-gradient(93deg,transparent 0,transparent 20px,rgba(255,255,255,.015) 20px,rgba(255,255,255,.015) 21px);
+  z-index:0;
+}
+
+#class-topbar {
+  position:relative;z-index:1;flex-shrink:0;
+  height:64px;
+  background:linear-gradient(180deg,#0a0502,var(--wood));
+  border-bottom:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;
+  box-shadow:0 4px 30px rgba(0,0,0,.6);
+}
+#class-title {
+  font-family:'Cinzel',serif;font-size:22px;font-weight:800;
+  color:var(--gold2);letter-spacing:2px;
+  text-shadow:0 0 30px rgba(200,169,110,.4);
+}
+#class-title span {
+  font-size:13px;font-weight:600;color:var(--text-dim);
+  letter-spacing:1px;margin-left:10px;vertical-align:middle;
+}
+
+#class-body {
+  position:relative;z-index:1;flex:1;
+  overflow-y:auto;padding:36px 40px;
+}
+#class-body::-webkit-scrollbar{width:6px;}
+#class-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+/* Section headers */
+.class-section-title {
+  font-family:'Cinzel',serif;font-size:11px;
+  color:var(--text-dim);letter-spacing:2px;
+  text-transform:uppercase;
+  margin-bottom:16px;margin-top:8px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:8px;
+}
+
+/* Class cards grid */
+.class-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:16px;
+  margin-bottom:36px;
+}
+
+.class-card {
+  background:linear-gradient(160deg,var(--wood2),var(--wood));
+  border:1px solid var(--border);
+  border-radius:12px;padding:24px 16px 20px;
+  cursor:pointer;text-align:center;
+  transition:all .25s;
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  position:relative;overflow:hidden;
+  box-shadow:0 4px 20px rgba(0,0,0,.4);
+}
+.class-card::before {
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(45deg,transparent,transparent 5px,rgba(255,255,255,.012) 5px,rgba(255,255,255,.012) 6px);
+}
+.class-card:hover {
+  border-color:var(--gold);
+  transform:translateY(-4px) scale(1.02);
+  box-shadow:0 12px 40px rgba(0,0,0,.7),0 0 20px rgba(200,169,110,.15);
+}
+.class-card-num {
+  font-family:'Cinzel',serif;font-size:28px;font-weight:800;
+  color:var(--gold2);line-height:1;
+  text-shadow:0 0 20px rgba(240,200,74,.3);
+  position:relative;z-index:1;
+}
+.class-card-label {
+  font-size:12px;color:var(--gold);
+  font-family:'Noto Serif Bengali',serif;
+  position:relative;z-index:1;
+  line-height:1.4;
+}
+.class-card-badge {
+  position:absolute;top:8px;right:8px;
+  background:rgba(200,169,110,.15);
+  border:1px solid var(--border);
+  border-radius:10px;padding:2px 7px;
+  font-size:9px;color:var(--text-dim);
+  font-family:monospace;
+  z-index:1;
+}
+.class-card-loading .class-card-num {
+  font-size:18px;opacity:.5;
+}
+
+/* loading spinner for class card */
+@keyframes spin { to{ transform:rotate(360deg); } }
+.class-spin {
+  width:18px;height:18px;border:2px solid var(--border);
+  border-top-color:var(--gold);border-radius:50%;
+  animation:spin .8s linear infinite;
+  display:inline-block;
+}
+
+/* ════════════════════════════════
+   LIBRARY SCREEN — updates for Screen 2
+════════════════════════════════ */
+#library-screen {
+  position:fixed;inset:0;
+  background:var(--bg);
+  display:flex;flex-direction:column;
+  z-index:10;
+  overflow:hidden;
+}
+
+/* wood grain overlay */
+#library-screen::before {
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    repeating-linear-gradient(87deg,transparent 0,transparent 12px,rgba(0,0,0,.04) 12px,rgba(0,0,0,.04) 13px),
+    repeating-linear-gradient(93deg,transparent 0,transparent 20px,rgba(255,255,255,.015) 20px,rgba(255,255,255,.015) 21px);
+  z-index:0;
+}
+
+/* Library top bar */
+#lib-topbar {
+  position:relative;z-index:1;
+  flex-shrink:0;
+  height:64px;
+  background:linear-gradient(180deg,#0a0502,var(--wood));
+  border-bottom:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;
+  box-shadow:0 4px 30px rgba(0,0,0,.6);
+}
+#lib-title {
+  font-family:'Cinzel',serif;font-size:18px;font-weight:800;
+  color:var(--gold2);letter-spacing:2px;
+  text-shadow:0 0 30px rgba(200,169,110,.4);
+  display:flex;align-items:center;gap:12px;
+}
+#lib-title span{font-size:13px;font-weight:600;color:var(--text-dim);letter-spacing:1px;}
+#btn-back-to-classes {
+  background:none;border:1px solid var(--border);border-radius:7px;
+  color:var(--gold);cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+  padding:6px 12px;font-size:12px;
+  font-family:'Noto Serif Bengali',serif;
+  transition:all .2s;flex-shrink:0;
+}
+#btn-back-to-classes:hover{border-color:var(--gold);color:var(--gold2);}
+#btn-back-to-classes svg{width:14px;height:14px;fill:currentColor;}
+
+#lib-actions{display:flex;gap:10px;align-items:center;}
+.lib-btn {
+  background:linear-gradient(135deg,var(--wood2),var(--wood3));
+  border:1px solid var(--border2);border-radius:8px;
+  color:var(--gold);padding:8px 16px;
+  font-family:'Noto Serif Bengali',serif;font-size:13px;
+  cursor:pointer;transition:all .2s;
+  display:flex;align-items:center;gap:7px;
+}
+.lib-btn:hover{border-color:var(--gold);color:var(--gold2);box-shadow:0 0 16px rgba(200,169,110,.2);}
+.lib-btn svg{width:15px;height:15px;fill:currentColor;flex-shrink:0;}
+.lib-btn.primary{background:linear-gradient(135deg,var(--red),#6b1111);border-color:rgba(180,60,60,.5);color:#f5c5c5;}
+.lib-btn.primary:hover{box-shadow:0 0 20px rgba(139,26,26,.4);}
+
+/* Book grid */
+#lib-body{position:relative;z-index:1;flex:1;overflow-y:auto;padding:28px 32px;}
+#lib-body::-webkit-scrollbar{width:6px;}
+#lib-body::-webkit-scrollbar-track{background:transparent;}
+#lib-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+#book-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  gap:20px;
+}
+
+/* empty state */
+#empty-state{
+  grid-column:1/-1;
+  text-align:center;padding:80px 20px;
+  color:var(--text-dim);
+}
+#empty-state .es-icon{font-size:64px;margin-bottom:16px;opacity:.5;}
+#empty-state p{font-size:15px;line-height:1.8;}
+
+/* Book card */
+.book-card {
+  position:relative;
+  background:linear-gradient(160deg,var(--wood2),var(--wood));
+  border:1px solid var(--border);
+  border-radius:6px;
+  overflow:hidden;cursor:pointer;
+  transition:all .25s;
+  aspect-ratio:3/4;
+  display:flex;flex-direction:column;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+}
+.book-card:hover{
+  border-color:var(--gold);
+  transform:translateY(-4px) scale(1.02);
+  box-shadow:0 12px 40px rgba(0,0,0,.7),0 0 20px rgba(200,169,110,.15);
+}
+.book-card-cover{
+  flex:1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:16px 12px 8px;
+  background:linear-gradient(160deg,#2a1608,#1a0d04);
+  position:relative;overflow:hidden;
+}
+.book-card-cover::before{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.015) 4px,rgba(255,255,255,.015) 5px);
+}
+.book-icon{font-size:44px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5));z-index:1;}
+.book-cover-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:center top;
+  border-radius:0;z-index:0;
+}
+.book-cover-img~.book-icon{display:none;}
+.book-card-info{
+  padding:10px 10px 8px;
+  border-top:1px solid var(--border);
+  background:rgba(0,0,0,.3);
+}
+.book-card-title{
+  font-family:'Cinzel',serif;font-size:11px;
+  color:var(--gold2);line-height:1.4;
+  overflow:hidden;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical;
+  margin-bottom:4px;
+}
+.book-card-meta{font-size:10px;color:var(--text-dim);display:none;}
+
+/* card action buttons */
+.book-card-actions{
+  position:absolute;top:6px;left:6px;
+  display:flex;gap:4px;
+  opacity:0;transition:opacity .2s;
+}
+.book-card:hover .book-card-actions{opacity:1;}
+.bca-btn{
+  width:26px;height:26px;border-radius:5px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;transition:all .15s;
+}
+.bca-btn.edit{background:rgba(30,17,8,.85);color:var(--gold);}
+.bca-btn.del{background:rgba(80,10,10,.85);color:#f09090;}
+.bca-btn:hover{transform:scale(1.1);}
+
+/* ADD BOOK card */
+.add-card {
+  background:transparent;
+  border:2px dashed var(--border);border-radius:6px;
+  cursor:pointer;aspect-ratio:3/4;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;color:var(--text-dim);
+  transition:all .25s;font-size:13px;
+}
+.add-card:hover{border-color:var(--gold);color:var(--gold);background:rgba(200,169,110,.04);}
+
+/* ── CONTEXT MENU ── */
+#ctx-menu{
+  position:fixed;z-index:9000;
+  background:linear-gradient(160deg,#1e1108,#2d1a0e);
+  border:1px solid var(--border2);border-radius:10px;
+  padding:6px 0;min-width:200px;
+  box-shadow:0 12px 40px rgba(0,0,0,.8),0 0 0 1px rgba(200,169,110,.08);
+  display:none;
+  animation:ctxIn .12s ease;
+}
+@keyframes ctxIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+.ctx-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 16px;cursor:pointer;font-size:13px;
+  color:var(--gold);transition:background .15s;
+  user-select:none;
+}
+.ctx-item:hover{background:rgba(200,169,110,.1);color:var(--gold2);}
+.ctx-item.danger{color:#e88;}
+.ctx-item.danger:hover{background:rgba(180,40,40,.15);color:#faa;}
+.ctx-item .ctx-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0;}
+.ctx-sep{height:1px;background:var(--border);margin:4px 8px;}
+
+/* ── SCRIPT RENAME inline ── */
+.script-name-wrap{display:flex;align-items:center;gap:6px;margin-bottom:3px;}
+.script-name-input{
+  background:transparent;border:none;border-bottom:1px solid transparent;
+  color:var(--gold2);font-size:13px;font-family:inherit;outline:none;
+  flex:1;padding:1px 2px;transition:border-color .2s;cursor:pointer;
+}
+.script-name-input:focus{border-bottom-color:var(--gold);cursor:text;}
+.script-rename-hint{font-size:10px;color:var(--text-dim);opacity:0;transition:opacity .2s;}
+.script-row:hover .script-rename-hint{opacity:1;}
+
+/* ── DRAG SORT for parts ── */
+.part-row{transition:opacity .15s,box-shadow .15s;position:relative;}
+.part-row.drag-placeholder{background:rgba(200,169,110,.08);border:1px dashed var(--gold);opacity:.5;}
+.drag-handle{color:var(--gold);cursor:grab;font-size:16px;padding:0 4px;flex-shrink:0;line-height:1;touch-action:none;}
+.drag-handle:hover{color:var(--gold2);}
+
+/* ── CONFIRM DIALOG ── */
+#confirm-modal .modal-box{max-width:420px;}
+.confirm-icon{font-size:48px;text-align:center;margin-bottom:12px;}
+.confirm-msg{font-size:14px;color:#ddd;text-align:center;line-height:1.7;margin-bottom:6px;}
+.confirm-sub{font-size:12px;color:var(--text-dim);text-align:center;}
+.mfooter-btn.danger{background:linear-gradient(135deg,#6b1111,#8b1a1a);border-color:rgba(180,60,60,.5);color:#fcc;}
+.mfooter-btn.danger:hover{box-shadow:0 0 20px rgba(139,26,26,.4);}
+
+/* ── COVER PICKER MODAL ── */
+#cover-modal .modal-box{max-width:460px;}
+.cover-preview{
+  width:100%;height:180px;
+  background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;margin-bottom:14px;position:relative;
+}
+.cover-preview img{width:100%;height:100%;object-fit:contain;}
+.cover-preview .cp-placeholder{font-size:48px;opacity:.4;}
+.add-card svg{width:32px;height:32px;fill:currentColor;opacity:.6;}
+
+
+/* ════════════════════════════════
+   MODALS (shared base)
+════════════════════════════════ */
+.modal-overlay {
+  position:fixed;inset:0;
+  background:rgba(5,2,0,.88);
+  display:none;align-items:center;justify-content:center;
+  z-index:500;backdrop-filter:blur(3px);
+}
+.modal-overlay.open{display:flex;}
+.modal-box {
+  background:linear-gradient(160deg,#1e1108,#2d1a0e);
+  border:1px solid var(--gold);border-radius:14px;
+  padding:0;width:90%;max-width:560px;
+  box-shadow:0 0 60px rgba(200,169,110,.12),0 30px 80px rgba(0,0,0,.8);
+  max-height:90vh;overflow:hidden;display:flex;flex-direction:column;
+}
+.modal-header{
+  padding:20px 24px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.modal-title{font-family:'Cinzel',serif;font-size:17px;color:var(--gold2);font-weight:700;}
+.modal-close{
+  background:none;border:1px solid var(--border);border-radius:6px;
+  color:var(--text-dim);cursor:pointer;width:30px;height:30px;
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  transition:all .2s;
+}
+.modal-close:hover{border-color:var(--gold);color:var(--gold2);}
+.modal-body{padding:20px 24px;overflow-y:auto;flex:1;}
+.modal-body::-webkit-scrollbar{width:5px;}
+.modal-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;}
+
+/* Form fields */
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12px;color:var(--gold);margin-bottom:6px;letter-spacing:.5px;}
+.field input,.field select{
+  width:100%;background:rgba(0,0,0,.4);
+  border:1px solid rgba(139,105,20,.5);border-radius:7px;
+  padding:9px 13px;color:#f0e8d0;
+  font-family:monospace;font-size:12px;outline:none;
+  transition:border-color .2s;
+  user-select:text!important;-webkit-user-select:text!important;
+}
+.field input:focus,.field select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,169,110,.12);}
+.field input::placeholder{color:#555;}
+.field select option{background:#1e1108;color:#f0e8d0;}
+
+.field-row{display:flex;gap:10px;}
+.field-row .field{flex:1;}
+
+/* Parts list */
+#parts-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px;}
+.part-row{
+  display:flex;gap:8px;align-items:center;
+  background:rgba(0,0,0,.25);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;
+}
+.part-row .part-num{
+  font-family:'Cinzel',serif;font-size:11px;color:var(--text-dim);
+  min-width:20px;flex-shrink:0;
+}
+.part-row input{
+  flex:1;background:transparent;border:none;border-bottom:1px solid var(--border);
+  border-radius:0;padding:3px 6px;color:#f0e8d0;font-family:monospace;font-size:11px;outline:none;
+}
+.part-row input:focus{border-bottom-color:var(--gold);}
+.part-row .part-del{
+  background:none;border:none;color:#f09090;cursor:pointer;font-size:15px;padding:2px 4px;opacity:.7;
+}
+.part-row .part-del:hover{opacity:1;}
+.add-part-btn{
+  background:none;border:1px dashed var(--border);border-radius:7px;
+  color:var(--text-dim);padding:8px;width:100%;cursor:pointer;font-size:12px;
+  transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.add-part-btn:hover{border-color:var(--gold);color:var(--gold);}
+
+.err-msg{color:#e74c3c;font-size:12px;margin-top:8px;min-height:16px;}
+
+.mfooter-btn{
+  background:linear-gradient(135deg,var(--wood2),var(--wood3));
+  border:1px solid var(--border2);border-radius:8px;
+  color:var(--gold);padding:9px 20px;
+  font-family:'Noto Serif Bengali',serif;font-size:13px;cursor:pointer;transition:all .2s;
+}
+.mfooter-btn:hover{border-color:var(--gold);color:var(--gold2);}
+.mfooter-btn.save{background:linear-gradient(135deg,#5a3800,#8b6914);border-color:var(--gold);color:#fff8e6;}
+.mfooter-btn.save:hover{box-shadow:0 0 20px rgba(200,169,110,.3);}
+
+/* Script manager */
+#scripts-list{display:flex;flex-direction:column;gap:8px;}
+.script-row{
+  background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;display:flex;align-items:center;gap:10px;
+}
+.script-info{flex:1;min-width:0;}
+.script-name{font-size:13px;color:var(--gold2);margin-bottom:3px;}
+.script-url{font-size:10px;color:var(--text-dim);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.script-del{background:none;border:none;color:#f09090;cursor:pointer;font-size:16px;opacity:.7;flex-shrink:0;}
+.script-del:hover{opacity:1;}
+
+
+/* ════════════════════════════════
+   READER SCREEN  — Left Panel + Right Book
+════════════════════════════════ */
+#reader-screen {
+  position:fixed;inset:0;
+  display:none;
+  background:var(--bg);
+  z-index:20;
+}
+#reader-screen.open{display:flex;}
+
+/* Left sidebar panel */
+#reader-panel {
+  width:220px;flex-shrink:0;
+  display:flex;flex-direction:column;
+  background:linear-gradient(180deg,#0a0502 0%,#1a0d04 40%,#0a0502 100%);
+  border-right:1px solid var(--border2);
+  z-index:10;position:relative;
+  overflow:hidden;
+}
+
+/* panel top — back + title */
+#panel-top{
+  padding:14px 14px 10px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+#btn-back{
+  display:flex;align-items:center;gap:8px;
+  background:none;border:none;color:var(--gold);
+  cursor:pointer;font-size:13px;padding:6px 0;
+  transition:color .2s;width:100%;
+  font-family:'Noto Serif Bengali',serif;
+}
+#btn-back:hover{color:var(--gold2);}
+#btn-back svg{width:16px;height:16px;fill:currentColor;flex-shrink:0;}
+#book-title-hud{
+  font-family:'Cinzel',serif;font-size:11px;
+  color:var(--text-gold);margin-top:10px;
+  line-height:1.5;
+  overflow:hidden;display:-webkit-box;
+  -webkit-line-clamp:3;-webkit-box-orient:vertical;
+}
+
+/* panel controls */
+#panel-controls{
+  padding:12px 14px;
+  border-bottom:1px solid var(--border);
+  display:flex;flex-direction:column;gap:8px;
+  flex-shrink:0;
+}
+#page-counter{
+  font-size:12px;color:var(--gold);
+  background:rgba(0,0,0,.4);padding:6px 10px;
+  border-radius:8px;border:1px solid var(--border);
+  text-align:center;
+}
+.panel-btn{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(0,0,0,.3);border:1px solid var(--border);
+  border-radius:8px;color:var(--gold);
+  padding:7px 10px;cursor:pointer;font-size:12px;
+  transition:all .2s;
+  font-family:'Noto Serif Bengali',serif;
+}
+.panel-btn:hover{border-color:var(--gold);color:var(--gold2);background:rgba(30,15,5,.6);}
+.panel-btn.active{background:rgba(200,169,110,.1);border-color:var(--gold);color:var(--gold2);}
+.panel-btn svg{width:14px;height:14px;fill:currentColor;flex-shrink:0;}
+
+/* panel content area (for TOC later) */
+#panel-content{
+  flex:1;overflow-y:auto;padding:12px 14px;
+}
+#panel-content::-webkit-scrollbar{width:4px;}
+#panel-content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* Right: book stage */
+#reader-stage-wrap{
+  flex:1;position:relative;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+
+/* wood bg on stage */
+#reader-stage-wrap::before{
+  content:'';position:absolute;inset:0;
+  background:
+    repeating-linear-gradient(88deg,transparent 0,transparent 8px,rgba(0,0,0,.06) 8px,rgba(0,0,0,.06) 9px),
+    linear-gradient(180deg,#1a0f07 0%,#2d1a0e 30%,#3d2212 50%,#2d1a0e 70%,#1a0f07 100%);
+  pointer-events:none;
+}
+
+/* Stage */
+#stage {
+  position:relative;z-index:1;
+  perspective:2500px;
+  user-select:none;-webkit-user-select:none;
+  display:flex;align-items:center;justify-content:center;
+  width:100%;height:100%;
+}
+#book{
+  position:relative;display:flex;align-items:stretch;
+  filter:drop-shadow(0 20px 50px rgba(0,0,0,.85));
+}
+.pp{position:relative;background:var(--cream);overflow:hidden;flex-shrink:0;}
+.pp canvas{display:block;image-rendering:high-quality;image-rendering:-webkit-optimize-contrast;}
+#left-page{border-radius:3px 0 0 3px;box-shadow:inset -6px 0 15px rgba(0,0,0,.12);}
+#right-page{border-radius:0 3px 3px 0;box-shadow:inset 6px 0 15px rgba(0,0,0,.12);}
+.pnum{position:absolute;bottom:8px;font-size:10px;color:#999;pointer-events:none;font-family:serif;}
+#left-page  .pnum{right:12px;}
+#right-page .pnum{left:12px;}
+
+/* Flip */
+#flip-container{position:absolute;top:0;height:100%;pointer-events:none;z-index:20;transform-style:preserve-3d;display:none;}
+#flip-container.flip-fwd{right:0;transform-origin:left center;animation:fFwd .6s cubic-bezier(.645,.045,.355,1) forwards;}
+#flip-container.flip-bwd{left:0;transform-origin:right center;animation:fBwd .6s cubic-bezier(.645,.045,.355,1) forwards;}
+@keyframes fFwd{0%{transform:rotateY(0)}100%{transform:rotateY(-180deg)}}
+@keyframes fBwd{0%{transform:rotateY(0)}100%{transform:rotateY(180deg)}}
+.flip-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;background:var(--cream);}
+.flip-face-back{transform:rotateY(180deg);}
+
+.hud-icon-btn{display:none;} /* legacy, kept for JS compat */
+
+/* Mobile mode */
+body.mobile-mode #right-page{display:none;}
+body.mobile-mode #left-page{border-radius:3px;}
+
+/* ════════════════════════════════
+   LOADING & ERROR
+════════════════════════════════ */
+#loading-overlay{
+  position:fixed;inset:0;background:rgba(10,5,2,.95);
+  display:none;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:20px;z-index:999;
+}
+.bl-wrap{position:relative;width:80px;height:60px;}
+.blp{position:absolute;width:36px;height:52px;background:var(--cream);border-radius:2px;top:4px;animation:pfa 1.4s ease-in-out infinite;}
+.blp:nth-child(1){left:0;animation-delay:0s}
+.blp:nth-child(2){left:8px;animation-delay:.2s}
+.blp:nth-child(3){right:0;animation-delay:.4s}
+@keyframes pfa{0%,100%{transform:rotateY(0) translateX(0);opacity:.4}50%{transform:rotateY(-40deg) translateX(-4px);opacity:1}}
+#loading-text{color:var(--gold2);font-size:15px;}
+#loading-sub{color:var(--gold);font-size:12px;opacity:.7;}
+#pb-wrap{width:220px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;}
+#pb{height:100%;width:0%;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:2px;transition:width .3s;}
+
+#error-box{
+  display:none;position:fixed;inset:0;background:rgba(10,5,2,.95);
+  align-items:center;justify-content:center;flex-direction:column;
+  gap:14px;z-index:999;color:#e74c3c;font-size:15px;text-align:center;padding:24px;
+}
+#error-box .ei{font-size:44px;}
+#error-box p{max-width:400px;color:#ccc;font-size:13px;margin-top:6px;}
+#btn-retry{background:none;border:1px solid #c0392b;border-radius:8px;color:#e74c3c;padding:8px 20px;cursor:pointer;font-size:13px;}
+
+/* default book star badge */
+.default-badge {
+  position:absolute;top:6px;right:6px;
+  font-size:13px;z-index:2;
+  filter:drop-shadow(0 1px 3px rgba(0,0,0,.6));
+  pointer-events:none;
+}
+
+/* cache badge on card */
+.cache-badge{
+  background:rgba(0,120,60,.6);border:1px solid rgba(0,200,100,.25);
+  border-radius:6px;padding:1px 5px;
+  font-size:10px;color:#90ffcc;
+  flex-shrink:0;pointer-events:none;line-height:1.4;
+}
+
+/* ════════════════════════════════
+   TOC PANEL
+════════════════════════════════ */
+#panel-content {
+  flex:1;overflow-y:auto;overflow-x:hidden;
+  padding:0;
+}
+#panel-content::-webkit-scrollbar{width:4px;}
+#panel-content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* TOC header inside panel */
+#toc-header {
+  padding:10px 14px 8px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;
+}
+#toc-header-title {
+  font-family:'Cinzel',serif;font-size:10px;
+  color:var(--text-dim);letter-spacing:1.5px;
+  text-transform:uppercase;
+}
+#btn-toc-import {
+  background:none;border:1px solid var(--border);
+  border-radius:5px;color:var(--text-dim);
+  cursor:pointer;font-size:10px;padding:3px 8px;
+  transition:all .2s;
+  font-family:'Noto Serif Bengali',serif;
+}
+#btn-toc-import:hover{border-color:var(--gold);color:var(--gold);}
+
+/* TOC empty state */
+#toc-empty {
+  padding:20px 14px;
+  text-align:center;
+  color:var(--text-dim);
+  font-size:11px;
+  line-height:1.8;
+}
+
+/* TOC tree */
+#toc-tree { padding:6px 0; }
+
+.toc-item {
+  display:flex;align-items:center;
+  cursor:pointer;
+  padding:5px 10px 5px 0;
+  border-left:2px solid transparent;
+  transition:all .15s;
+  position:relative;
+  user-select:none;
+}
+.toc-item:hover { background:rgba(200,169,110,.07); border-left-color:var(--border2); }
+.toc-item.active {
+  background:rgba(200,169,110,.13);
+  border-left-color:var(--gold2);
+}
+.toc-item.active .toc-label { color:var(--gold2); font-weight:600; }
+
+.toc-toggle {
+  width:18px;height:18px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--text-dim);font-size:9px;
+  margin-left:4px;
+  transition:transform .2s;
+}
+.toc-toggle.open { transform:rotate(90deg); }
+.toc-toggle.leaf { color:transparent; pointer-events:none; }
+
+.toc-label {
+  flex:1;font-size:11px;color:var(--gold);
+  line-height:1.4;
+  font-family:'Noto Serif Bengali',serif;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.toc-page {
+  font-size:9px;color:var(--text-dim);
+  font-family:monospace;
+  flex-shrink:0;margin-left:4px;
+  opacity:.7;
+}
+
+.toc-children { overflow:hidden; transition:max-height .2s ease; }
+.toc-children.collapsed { max-height:0!important; }
+
+/* depth indentation */
+.toc-depth-0 { padding-left:10px; }
+.toc-depth-1 { padding-left:22px; }
+.toc-depth-2 { padding-left:34px; }
+.toc-depth-3 { padding-left:46px; }
+
+/* ── TOC Import Modal ── */
+#toc-modal .modal-box { max-width:520px; }
+#toc-textarea {
+  width:100%;min-height:200px;
+  background:rgba(0,0,0,.5);
+  border:1px solid rgba(139,105,20,.4);
+  border-radius:8px;padding:12px;
+  color:#f0e8d0;font-family:monospace;font-size:12px;
+  line-height:1.7;outline:none;resize:vertical;
+  user-select:text!important;-webkit-user-select:text!important;
+}
+#toc-textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,169,110,.1);}
+#toc-textarea::placeholder{color:#555;}
+.toc-format-hint {
+  background:rgba(0,0,0,.3);border:1px solid var(--border);
+  border-radius:7px;padding:10px 14px;margin-top:12px;
+  font-family:monospace;font-size:11px;color:var(--text-dim);line-height:1.9;
+}
+.toc-format-hint strong{color:var(--gold);font-weight:600;}
+
+/* settings modal */
+#settings-modal .modal-box{max-width:460px;}
+.settings-section{margin-bottom:22px;}
+.settings-section-title{
+  font-family:'Cinzel',serif;font-size:12px;
+  color:var(--text-dim);letter-spacing:1px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:6px;margin-bottom:12px;
+}
+.settings-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 12px;background:rgba(0,0,0,.25);
+  border:1px solid var(--border);border-radius:8px;margin-bottom:8px;
+}
+.settings-row-info{flex:1;}
+.settings-row-label{font-size:13px;color:var(--gold2);margin-bottom:2px;}
+.settings-row-sub{font-size:11px;color:var(--text-dim);}
+.settings-action-btn{
+  background:linear-gradient(135deg,var(--wood2),var(--wood3));
+  border:1px solid var(--border2);border-radius:7px;
+  color:var(--gold);padding:7px 14px;font-size:12px;
+  cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0;margin-left:12px;
+}
+.settings-action-btn:hover{border-color:var(--gold);color:var(--gold2);}
+.settings-action-btn.danger{border-color:rgba(180,60,60,.4);color:#e88;}
+.settings-action-btn.danger:hover{background:rgba(80,10,10,.5);color:#faa;border-color:#c0392b;}
+#cache-total-size{font-size:12px;color:var(--text-dim);margin-top:4px;}
+</style>
+</head>
+<body>
+
+<!-- ══════════ CLASS SELECTION SCREEN (Screen 1) ══════════ -->
+<div id="class-screen">
+  <div id="class-topbar">
+    <div id="class-title">📚 Digital Library <span>Select a Class</span></div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="lib-btn" id="btn-class-scripts" title="Manage Apps Script URLs">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 11.5c0 .83-.67 1.5-1.5 1.5S12 16.33 12 15.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5zM9.5 9C8.12 9 7 10.12 7 11.5V13h1.5v-1.5C8.5 10.95 8.95 10.5 9.5 10.5S10.5 10.95 10.5 11.5c0 .74-.31 1.18-.87 1.71C9.07 13.74 8.5 14.43 8.5 15.5H10c0-.63.41-1 .97-1.53C11.57 13.41 12 12.72 12 11.5 12 10.12 10.88 9 9.5 9zM20 8H4V6h16v2z"/></svg>
+        Scripts
+      </button>
+      <button class="lib-btn" id="btn-class-settings" title="Settings">
+        <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+        Settings
+      </button>
+    </div>
+  </div>
+  <div id="class-body">
+    <div class="class-section-title">Primary — Class 1–5</div>
+    <div class="class-grid" id="grid-primary"></div>
+    <div class="class-section-title">Secondary — Class 6–10</div>
+    <div class="class-grid" id="grid-secondary"></div>
+    <div class="class-section-title">Higher Secondary — Class 11–12</div>
+    <div class="class-grid" id="grid-higher"></div>
+  </div>
+</div>
+
+<!-- ══════════ LIBRARY SCREEN (Screen 2) ══════════ -->
+<div id="library-screen" style="display:none;">
+  <div id="lib-topbar">
+    <div id="lib-title">
+      <button id="btn-back-to-classes" title="Back to Classes">
+        <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        Classes
+      </button>
+      <span id="lib-class-name">📚</span>
+    </div>
+    <div id="lib-actions">
+      <button class="lib-btn" id="btn-import-json" title="Import library from JSON">
+        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        Import
+      </button>
+      <button class="lib-btn" id="btn-export-json" title="Export library as JSON">
+        <svg viewBox="0 0 24 24"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
+        Export
+      </button>
+      <button class="lib-btn" id="btn-manage-scripts" title="Manage Apps Script URLs">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 11.5c0 .83-.67 1.5-1.5 1.5S12 16.33 12 15.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5zM9.5 9C8.12 9 7 10.12 7 11.5V13h1.5v-1.5C8.5 10.95 8.95 10.5 9.5 10.5S10.5 10.95 10.5 11.5c0 .74-.31 1.18-.87 1.71C9.07 13.74 8.5 14.43 8.5 15.5H10c0-.63.41-1 .97-1.53C11.57 13.41 12 12.72 12 11.5 12 10.12 10.88 9 9.5 9zM20 8H4V6h16v2z"/></svg>
+        Scripts
+      </button>
+      <button class="lib-btn" id="btn-settings-lib" title="Settings">
+        <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+        Settings
+      </button>
+      <button class="lib-btn primary" id="btn-add-book">
+        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Book
+      </button>
+    </div>
+  </div>
+  <div id="lib-body">
+    <div id="book-grid">
+      <div id="empty-state">
+        <div class="es-icon">📖</div>
+        <p>এই শ্রেণীতে কোনো বই নেই।</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ READER SCREEN ══════════ -->
+<div id="reader-screen">
+
+  <!-- LEFT PANEL -->
+  <div id="reader-panel">
+    <div id="panel-top">
+      <button id="btn-back">
+        <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        Library
+      </button>
+      <div id="book-title-hud">Loading...</div>
+    </div>
+    <div id="panel-controls">
+      <div id="page-counter">— / —</div>
+      <button class="panel-btn" id="btn-mobile" title="Single / Double page">
+        <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+        Single Page
+      </button>
+      <button class="panel-btn" id="btn-fs" title="Fullscreen">
+        <svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        <span>Fullscreen</span>
+      </button>
+    </div>
+    <div id="toc-header">
+      <span id="toc-header-title">সূচিপত্র</span>
+      <button id="btn-toc-import" title="সূচিপত্র import করুন">＋ Import</button>
+    </div>
+    <div id="panel-content">
+      <div id="toc-empty">
+        <div style="font-size:28px;margin-bottom:8px;opacity:.4;">📋</div>
+        <div>সূচিপত্র নেই।</div>
+        <div style="margin-top:6px;font-size:10px;">উপরের <strong style="color:var(--gold)">Import</strong> বাটনে চাপুন।</div>
+      </div>
+      <div id="toc-tree" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: BOOK STAGE -->
+  <div id="reader-stage-wrap">
+    <div id="stage">
+      <div id="book">
+        <div class="pp" id="left-page"><canvas id="cvL"></canvas><div class="pnum" id="numL"></div></div>
+        <div class="pp" id="right-page"><canvas id="cvR"></canvas><div class="pnum" id="numR"></div></div>
+        <div id="flip-container">
+          <div class="flip-face"><canvas id="cvFF"></canvas></div>
+          <div class="flip-face flip-face-back"><canvas id="cvFB"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- hidden compat elements -->
+  <div id="part-indicator" style="display:none"></div>
+</div>
+
+<!-- ══════════ LOADING ══════════ -->
+<div id="loading-overlay">
+  <div class="bl-wrap"><div class="blp"></div><div class="blp"></div><div class="blp"></div></div>
+  <div id="loading-text">Loading...</div>
+  <div id="loading-sub">Please wait</div>
+  <div id="pb-wrap"><div id="pb"></div></div>
+</div>
+
+<!-- ══════════ ERROR ══════════ -->
+<div id="error-box">
+  <div class="ei">⚠️</div>
+  <strong id="err-title">Failed to load</strong>
+  <p id="err-msg"></p>
+  <button id="btn-retry">↩ Back to Library</button>
+</div>
+
+<!-- ══════════ ADD/EDIT BOOK MODAL ══════════ -->
+<div class="modal-overlay" id="book-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="book-modal-title">Add New Book</div>
+      <button class="modal-close" data-close="book-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:14px;align-items:flex-start;">
+        <!-- Cover preview sidebar -->
+        <div style="flex-shrink:0;width:90px;">
+          <div id="bm-cover-preview" style="width:90px;height:120px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:36px;cursor:pointer;" title="Click to change cover">
+            📖
+          </div>
+          <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-top:5px;">Click to set cover</div>
+        </div>
+        <!-- Fields -->
+        <div style="flex:1;min-width:0;">
+          <div class="field">
+            <label>📖 Book Title</label>
+            <input id="bm-title" type="text" placeholder="Enter book title..." autocomplete="off"/>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>🖼 Cover Image URL</label>
+            <input id="bm-cover-url" type="text" placeholder="https://example.com/cover.jpg" spellcheck="false" autocomplete="off"/>
+          </div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:14px;">
+        <label>📄 PDF Parts (Script + File ID per part)</label>
+        <div id="parts-list"></div>
+        <button class="add-part-btn" id="btn-add-part">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          Add Part
+        </button>
+      </div>
+      <div class="err-msg" id="bm-err"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="mfooter-btn" data-close="book-modal">Cancel</button>
+      <button class="mfooter-btn save" id="btn-save-book">Save Book</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SCRIPT MANAGER MODAL ══════════ -->
+<div class="modal-overlay" id="scripts-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">⚙️ Manage Apps Scripts</div>
+      <button class="modal-close" data-close="scripts-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.7;">
+        Google Apps Script Web App URL গুলো এখানে save করুন। বই add করার সময় এখান থেকে select করতে পারবেন।
+      </p>
+      <div class="field field-row">
+        <div class="field" style="flex:1">
+          <label>Script Name</label>
+          <input id="ns-name" type="text" placeholder="My Script 1" autocomplete="off"/>
+        </div>
+        <div class="field" style="flex:2">
+          <label>Web App URL</label>
+          <input id="ns-url" type="text" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" spellcheck="false"/>
+        </div>
+      </div>
+      <button class="add-part-btn" id="btn-add-script" style="margin-bottom:16px;">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Script
+      </button>
+      <div id="scripts-list"></div>
+      <div class="err-msg" id="sm-err"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="mfooter-btn" data-close="scripts-modal">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- hidden import input -->
+<input type="file" id="import-file-input" accept=".json" style="display:none"/>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="confirm-title">Confirm</div>
+      <button class="modal-close" data-close="confirm-modal">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:28px 24px;">
+      <div class="confirm-icon" id="confirm-icon">🗑</div>
+      <div class="confirm-msg" id="confirm-msg">Are you sure?</div>
+      <div class="confirm-sub" id="confirm-sub"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="mfooter-btn" data-close="confirm-modal">Cancel</button>
+      <button class="mfooter-btn danger" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- COVER PICKER MODAL -->
+<div class="modal-overlay" id="cover-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">🖼 Set Book Cover</div>
+      <button class="modal-close" data-close="cover-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="cover-preview" id="cover-preview">
+        <span class="cp-placeholder">🖼</span>
+      </div>
+      <div class="field">
+        <label>Image URL (direct link to any image)</label>
+        <input id="cover-url-input" type="text" placeholder="https://example.com/book-cover.jpg" spellcheck="false" autocomplete="off"/>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px;line-height:1.6;">
+        💡 Google Drive image link, Wikipedia cover, Open Library cover, বা যেকোনো direct image URL ব্যবহার করুন।
+      </div>
+      <div class="err-msg" id="cover-err"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="mfooter-btn" id="cover-clear">Remove Cover</button>
+      <button class="mfooter-btn" data-close="cover-modal">Cancel</button>
+      <button class="mfooter-btn save" id="cover-save">Apply Cover</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div id="ctx-menu">
+  <div class="ctx-item" id="ctx-open"><span class="ctx-icon">📖</span> Open Book</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-edit"><span class="ctx-icon">✏️</span> Edit / Rename</div>
+  <div class="ctx-item" id="ctx-add-part"><span class="ctx-icon">➕</span> Add New Part</div>
+  <div class="ctx-item" id="ctx-sort-parts"><span class="ctx-icon">↕️</span> Reorder Parts</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-change-icon"><span class="ctx-icon">🖼</span> Change Cover</div>
+  <div class="ctx-item" id="ctx-bookmark"><span class="ctx-icon">🔖</span> Last Read Page</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-remove-cache"><span class="ctx-icon">🗂</span> Remove Cache <span id="ctx-cache-size" style="font-size:10px;color:var(--text-dim);margin-left:4px;"></span></div>
+  <div class="ctx-item danger" id="ctx-delete"><span class="ctx-icon">🗑</span> Delete Book</div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">⚙️ Settings</div>
+      <button class="modal-close" data-close="settings-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <div class="settings-section-title">CACHE MANAGEMENT</div>
+        <div class="settings-row">
+          <div class="settings-row-info">
+            <div class="settings-row-label">📦 Total Cache Size</div>
+            <div class="settings-row-sub" id="cache-total-size">Calculating...</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-info">
+            <div class="settings-row-label">🗂 Clear All Book Caches</div>
+            <div class="settings-row-sub">সব বইয়ের cached PDF data মুছে ফেলবে। বই list মুছবে না।</div>
+          </div>
+          <button class="settings-action-btn danger" id="btn-clear-all-cache">Clear All</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="mfooter-btn" data-close="settings-modal">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ TOC IMPORT MODAL ══════════ -->
+<div class="modal-overlay" id="toc-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">📋 সূচিপত্র Import</div>
+      <button class="modal-close" data-close="toc-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>সূচিপত্র লিখুন (নিচের ফরম্যাট অনুসরণ করুন)</label>
+        <textarea id="toc-textarea" placeholder="# প্রথম অধ্যায়&#10;- উপবিভাগ ১&#10;- উপবিভাগ ২&#10;-- আরও গভীর স্তর&#10;# দ্বিতীয় অধ্যায়&#10;- পরিচয়"></textarea>
+      </div>
+      <div class="toc-format-hint">
+        <strong>#</strong> প্রথম অধ্যায় (depth 0 — root)<br>
+        <strong>-</strong> উপবিভাগ (depth 1)<br>
+        <strong>--</strong> আরও গভীর (depth 2)<br>
+        <strong>---</strong> তৃতীয় স্তর (depth 3)<br><br>
+        প্রতিটি লাইনের শেষে page number দিতে পারেন:<br>
+        <strong>#</strong> প্রথম অধ্যায় <strong style="color:var(--gold2)">|১১</strong> &nbsp;(পাইপ + পৃষ্ঠা নম্বর)
+      </div>
+      <div class="err-msg" id="toc-err"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="mfooter-btn" id="btn-toc-clear" style="margin-right:auto;">🗑 Clear TOC</button>
+      <button class="mfooter-btn" data-close="toc-modal">Cancel</button>
+      <button class="mfooter-btn save" id="btn-toc-save">✓ Apply TOC</button>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ═══════════════════════════════════════════
+// DATA LAYER
+// ═══════════════════════════════════════════
+// TOC TEXT PARSER  (data layer-এর আগে দরকার)
+// ═══════════════════════════════════════════
+function parseTOCText(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const root = [], stack = [];
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    let depth = -1, rawTitle = '';
+    if (trimmed.startsWith('#')) { depth = 0; rawTitle = trimmed.substring(1).trim(); }
+    else if (trimmed.startsWith('-')) {
+      const m = trimmed.match(/^(-+)\s*(.*)/);
+      if (m) { depth = m[1].length; rawTitle = m[2].trim(); }
+    }
+    if (depth < 0 || !rawTitle) return;
+    let title = rawTitle, page = null;
+    const pi = rawTitle.lastIndexOf('|');
+    if (pi >= 0) {
+      const ap = rawTitle.substring(pi + 1).trim();
+      if (/^\d+$/.test(ap)) { page = parseInt(ap, 10); title = rawTitle.substring(0, pi).trim(); }
+    }
+    const node = { title, page, children: [] };
+    while (stack.length > 0 && stack[stack.length-1].depth >= depth) stack.pop();
+    if (stack.length === 0) root.push(node);
+    else stack[stack.length-1].node.children.push(node);
+    stack.push({ node, depth });
+  });
+  return root;
+}
+
+// ═══════════════════════════════════════════
+// CLASS → TXT FILE MAPPING
+// index/ ফোল্ডারে প্রতিটি শ্রেণীর জন্য একটি txt ফাইল থাকবে
+// ═══════════════════════════════════════════
+const CLASS_FILES = {
+  1:     'index/class1.txt',
+  2:     'index/class2.txt',
+  3:     'index/class3.txt',
+  4:     'index/class4.txt',
+  5:     'index/class5.txt',
+  6:     'index/class6.txt',
+  7:     'index/class7.txt',
+  8:     'index/class8.txt',
+  'ssc': 'index/ssc.txt',   // Class 9-10
+  'hsc': 'index/hsc.txt',   // Class 11-12
+};
+
+const CLASS_LABELS = {
+  1:'Class 1', 2:'Class 2', 3:'Class 3',
+  4:'Class 4', 5:'Class 5', 6:'Class 6',
+  7:'Class 7', 8:'Class 8',
+  'ssc': 'SSC (9-10)',
+  'hsc': 'HSC (11-12)',
+};
+
+const CLASS_DISPLAY_NUM = {
+  'ssc': '9-10',
+  'hsc': '11-12',
+};
+
+// parsed class data: { [classId]: [ {id,title,coverUrl,icon,parts,toc,isDefault}, ... ] }
+let classData = {};
+// which class is currently open in library screen
+let currentClassId = null;
+
+// ═══════════════════════════════════════════
+// TXT PARSER  (md ফাইলের reference অনুযায়ী)
+// ═══════════════════════════════════════════
+// txt format:
+//   * বাংলা                    ← book name
+//   coverUrl: https://...      ← optional cover (next line after *)
+//   scriptId: SCRIPT_ID        ← optional
+//   fileId: FILE_ID            ← optional
+//   # প্রথম অধ্যায় |১        ← TOC root chapter
+//   - উপবিভাগ |৩              ← depth 1
+//   -- গভীর |৫                ← depth 2
+
+function parseClassTxt(text, classId) {
+  const lines = text.split('\n');
+  const books = [];
+  let currentBook = null;
+  let tocStack = [];
+
+  // simple hash for stable IDs
+  function sh(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+    return Math.abs(h).toString(36).substring(0, 6);
+  }
+
+  lines.forEach(rawLine => {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    // ── Book definition ──
+    if (trimmed.startsWith('* ')) {
+      const title = trimmed.substring(2).trim();
+      if (!title) return;
+      currentBook = {
+        id:       `cls${classId}_${sh(title)}`,
+        title,
+        coverUrl: '',
+        icon:     '📖',
+        parts:    [],
+        tocText:  '',
+        isDefault: true,
+        classId,
+        lastPage: 0,
+      };
+      books.push(currentBook);
+      tocStack = [];
+      return;
+    }
+
+    if (!currentBook) return;
+
+    // ── Inline metadata (must come right after * line) ──
+    if (trimmed.startsWith('coverUrl:')) {
+      currentBook.coverUrl = trimmed.substring(9).trim(); return;
+    }
+    if (trimmed.startsWith('icon:')) {
+      currentBook.icon = trimmed.substring(5).trim(); return;
+    }
+    if (trimmed.startsWith('scriptId:')) {
+      // store for pairing with next fileId
+      currentBook._pendingScriptId = trimmed.substring(9).trim(); return;
+    }
+    if (trimmed.startsWith('fileId:')) {
+      const fid = trimmed.substring(7).trim();
+      if (currentBook._pendingScriptId) {
+        currentBook.parts.push({ scriptId: currentBook._pendingScriptId, fileId: fid });
+        delete currentBook._pendingScriptId;
+      }
+      return;
+    }
+
+    // ── TOC lines ──
+    if (trimmed.startsWith('#') || trimmed.startsWith('-')) {
+      currentBook.tocText += line + '\n';
+    }
+  });
+
+  // clean up temp props
+  books.forEach(b => delete b._pendingScriptId);
+  return books;
+}
+
+// ═══════════════════════════════════════════
+// DATA LAYER
+// ═══════════════════════════════════════════
+const LS_SCRIPTS    = 'dlib_scripts';
+const LS_TOC        = 'dlib_toc';   // { [bookId]: tocNodes[] }
+const LS_USERBOOKS  = 'dlib_userbooks';    // user-added books: { [classId]: [...] }
+const LS_CLASS_CACHE = 'dlib_classcache';  // parsed txt cache: { [classId]: books[] }
+
+function loadScripts(){
+  try{ return JSON.parse(localStorage.getItem(LS_SCRIPTS)||'[]'); }
+  catch{ return []; }
+}
+function saveScripts(s){ localStorage.setItem(LS_SCRIPTS, JSON.stringify(s)); }
+
+// ── TOC storage ──
+function loadAllTOC(){
+  try{ return JSON.parse(localStorage.getItem(LS_TOC)||'{}'); }
+  catch{ return {}; }
+}
+function saveAllTOC(data){ localStorage.setItem(LS_TOC, JSON.stringify(data)); }
+
+function loadBookTOC(bookId) {
+  // 1. user override
+  const stored = loadAllTOC()[bookId];
+  if (stored && stored.length > 0) return stored;
+  // 2. from parsed class data
+  for (const cid in classData) {
+    const b = classData[cid].find(x => x.id === bookId);
+    if (b && b.tocText) return parseTOCText(b.tocText);
+  }
+  return [];
+}
+function saveBookTOC(bookId, nodes){
+  const all = loadAllTOC();
+  all[bookId] = nodes;
+  saveAllTOC(all);
+}
+
+// ── User-added books ──
+function loadUserBooks(classId){
+  try{
+    const all = JSON.parse(localStorage.getItem(LS_USERBOOKS)||'{}');
+    return all[classId] || [];
+  } catch { return []; }
+}
+function saveUserBooks(classId, bks){
+  const all = JSON.parse(localStorage.getItem(LS_USERBOOKS)||'{}');
+  all[classId] = bks;
+  localStorage.setItem(LS_USERBOOKS, JSON.stringify(all));
+}
+
+// ── Get all books for a class (txt books + user books) ──
+function getBooksForClass(classId) {
+  const def = classData[classId] || [];
+  const usr = loadUserBooks(classId);
+  return [...def, ...usr];
+}
+
+// ── The 'books' variable — always refers to current class ──
+// (used by existing library/reader code which references `books` directly)
+let books = [];
+let scripts = loadScripts();
+
+function refreshBooksForClass(classId) {
+  books = getBooksForClass(classId);
+}
+
+function saveBooks(bks) {
+  if (currentClassId === null) {
+    books = bks;
+    return;
+  }
+  const userBks = bks.filter(b => !b.isDefault);
+  saveUserBooks(currentClassId, userBks);
+  // update lastPage for default books too
+  bks.filter(b => b.isDefault).forEach(b => {
+    const found = (classData[currentClassId]||[]).find(x => x.id === b.id);
+    if (found) found.lastPage = b.lastPage;
+  });
+  books = bks;
+}
+
+function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+// ═══════════════════════════════════════════
+// $ helper & modal system
+// ═══════════════════════════════════════════
+const $=id=>document.getElementById(id);
+
+function openModal(id){ $(id).classList.add('open'); }
+function closeModal(id){ $(id).classList.remove('open'); }
+
+// Close on overlay click or [data-close] btn
+document.querySelectorAll('.modal-overlay').forEach(overlay=>{
+  overlay.addEventListener('click', e=>{
+    if(e.target===overlay) closeModal(overlay.id);
+  });
+});
+document.querySelectorAll('[data-close]').forEach(btn=>{
+  btn.addEventListener('click', ()=> closeModal(btn.dataset.close));
+});
+
+// Allow typing in modal inputs
+document.querySelectorAll('.modal-box').forEach(box=>{
+  box.addEventListener('keydown', e=>e.stopPropagation());
+});
+
+// ═══════════════════════════════════════════
+// LIBRARY RENDER
+// ═══════════════════════════════════════════
+function renderLibrary(){
+  const grid = $('book-grid');
+  grid.innerHTML='';
+
+  if(books.length===0){
+    const label = currentClassId ? (CLASS_LABELS[currentClassId]||`Class ${currentClassId}`) : '';
+    grid.innerHTML=`<div id="empty-state"><div class="es-icon">📖</div><p>No books found for ${label}.<br>Click "Add Book" to add one.</p></div>`;
+  }
+
+  books.forEach(book=>{
+    const card = document.createElement('div');
+    card.className='book-card';
+    const coverImg = book.coverUrl
+      ? `<img class="book-cover-img" src="${book.coverUrl}" alt="" onerror="this.style.display='none'"/>`
+      : '';
+    // default book badge
+    const defBadge = book.isDefault
+      ? `<div class="default-badge" title="Built-in book">⭐</div>`
+      : '';
+    card.innerHTML=`
+      <div class="book-card-cover">
+        ${coverImg}
+        <div class="book-icon">${book.icon||'📖'}</div>
+        ${defBadge}
+      </div>
+      <div class="book-card-info">
+        <div style="display:flex;align-items:center;gap:5px;">
+          <div class="book-card-title" style="flex:1">${book.title}</div>
+          <div class="cache-badge" data-bid="${book.id}" style="display:none">⚡</div>
+        </div>
+      </div>`;
+
+    card.addEventListener('click', ()=> openBook(book));
+    card.addEventListener('contextmenu', e=>{ e.preventDefault(); showCtxMenu(e, book.id); });
+    grid.appendChild(card);
+  });
+
+  // Add card
+  const addCard = document.createElement('div');
+  addCard.className='add-card';
+  addCard.innerHTML=`<svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span>Add Book</span>`;
+  addCard.addEventListener('click', ()=> openAddBook());
+  grid.appendChild(addCard);
+
+  // async: update cache badges without blocking render
+  updateCacheBadges();
+}
+
+// ═══════════════════════════════════════════
+// SCRIPT MANAGER
+// ═══════════════════════════════════════════
+function renderScriptsList(){
+  const list = $('scripts-list');
+  list.innerHTML='';
+  if(scripts.length===0){
+    list.innerHTML='<p style="color:var(--text-dim);font-size:12px;text-align:center;padding:12px;">No scripts saved yet.</p>';
+    return;
+  }
+  scripts.forEach(s=>{
+    const row=document.createElement('div');
+    row.className='script-row';
+    row.innerHTML=`
+      <div class="script-info">
+        <div class="script-name-wrap">
+          <input class="script-name-input" value="${s.name}" title="Click to rename"/>
+          <span class="script-rename-hint">✏️ rename</span>
+        </div>
+        <div class="script-url">${s.url}</div>
+      </div>
+      <button class="script-del" title="Remove">✕</button>`;
+    // inline rename
+    const nameInput = row.querySelector('.script-name-input');
+    nameInput.addEventListener('change',()=>{
+      const newName=nameInput.value.trim();
+      if(!newName){nameInput.value=s.name;return;}
+      s.name=newName; saveScripts(scripts);
+    });
+    nameInput.addEventListener('keydown',e=>{if(e.key==='Enter') nameInput.blur();});
+    row.querySelector('.script-del').addEventListener('click',()=>{
+      scripts=scripts.filter(x=>x.id!==s.id);
+      saveScripts(scripts); renderScriptsList();
+    });
+    list.appendChild(row);
+  });
+}
+
+// Auto-save script when URL is entered (blur or Enter) — no need to click Add button
+function tryAutoSaveScript(){
+  const url=$('ns-url').value.trim();
+  const err=$('sm-err');
+  if(!url) return;
+  if(!url.includes('script.google.com')){err.textContent='Not a valid Apps Script URL';return;}
+  // auto-generate name if empty
+  let name=$('ns-name').value.trim();
+  if(!name) name='Script '+(scripts.length+1);
+  scripts.push({id:genId(),name,url});
+  saveScripts(scripts);
+  $('ns-name').value=''; $('ns-url').value=''; err.textContent='';
+  renderScriptsList();
+}
+
+$('btn-manage-scripts').addEventListener('click',()=>{
+  renderScriptsList(); openModal('scripts-modal');
+});
+
+$('btn-add-script').addEventListener('click', tryAutoSaveScript);
+
+$('ns-url').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); tryAutoSaveScript(); }
+});
+$('ns-url').addEventListener('blur',()=>{
+  if($('ns-url').value.trim()) tryAutoSaveScript();
+});
+
+// ═══════════════════════════════════════════
+// ADD / EDIT BOOK MODAL
+// ═══════════════════════════════════════════
+let editingBookId = null;
+
+function buildPartsUI(parts=[]){
+  const list=$('parts-list');
+  list.innerHTML='';
+  const rows = parts.length>0 ? parts : [{scriptId:'',fileId:''}];
+  rows.forEach((p,i)=> addPartRow(p,i));
+  initDragSort(list);
+}
+
+// ── Mouse-based drag sort ──
+let _dragSrc=null;
+function initDragSort(list){
+  list.addEventListener('mousedown',e=>{
+    const handle=e.target.closest('.drag-handle');
+    if(!handle) return;
+    const row=handle.closest('.part-row');
+    if(!row) return;
+    e.preventDefault();
+    _dragSrc=row;
+    row.style.opacity='0.4';
+
+    function onMove(ev){
+      const els=[...list.querySelectorAll('.part-row:not([style*="opacity"])')];
+      list.querySelectorAll('.part-row').forEach(r=>r.classList.remove('drag-placeholder'));
+      const target=els.find(r=>{
+        const rect=r.getBoundingClientRect();
+        return ev.clientY>=rect.top && ev.clientY<=rect.bottom;
+      });
+      if(target&&target!==_dragSrc){
+        const rect=target.getBoundingClientRect();
+        const mid=rect.top+rect.height/2;
+        if(ev.clientY<mid) list.insertBefore(_dragSrc,target);
+        else list.insertBefore(_dragSrc,target.nextSibling);
+      }
+    }
+    function onUp(){
+      if(_dragSrc) _dragSrc.style.opacity='';
+      list.querySelectorAll('.part-row').forEach(r=>r.classList.remove('drag-placeholder'));
+      list.querySelectorAll('.part-row .part-num').forEach((el,i)=>el.textContent=i+1);
+      _dragSrc=null;
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+    }
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  });
+}
+
+function addPartRow(part={},idx){
+  const list=$('parts-list');
+  const i = idx !== undefined ? idx : list.querySelectorAll('.part-row').length;
+  const opts = scripts.map(s=>`<option value="${s.id}" ${part.scriptId===s.id?'selected':''}>${s.name}</option>`).join('');
+
+  const row=document.createElement('div');
+  row.className='part-row';
+  row.innerHTML=`
+    <span class="drag-handle" title="Hold & drag to reorder">⠿</span>
+    <span class="part-num">${i+1}</span>
+    <select class="part-script" style="flex:1;background:rgba(0,0,0,.4);border:1px solid rgba(139,105,20,.5);border-radius:6px;padding:5px 8px;color:#f0e8d0;font-size:11px;outline:none;">
+      <option value="">— Select Script —</option>
+      ${opts}
+    </select>
+    <input class="part-fileid" type="text" placeholder="Drive File ID or URL" value="${part.fileId||''}" style="flex:2;"/>
+    <button class="part-del" title="Remove part">✕</button>`;
+
+  row.querySelector('.part-del').addEventListener('click',()=>{
+    row.remove();
+    list.querySelectorAll('.part-row .part-num').forEach((el,i)=>el.textContent=i+1);
+  });
+
+  list.appendChild(row);
+}
+
+function getPartsFromUI(){
+  return [...$('parts-list').querySelectorAll('.part-row')].map(row=>({
+    scriptId: row.querySelector('.part-script').value,
+    fileId:   extractId(row.querySelector('.part-fileid').value.trim()),
+  }));
+}
+
+$('btn-add-part').addEventListener('click',()=>{
+  if(scripts.length===0){
+    $('bm-err').textContent='先 add a Script in the Scripts manager first.';
+    return;
+  }
+  addPartRow();
+});
+
+function updateBmCoverPreview(url){
+  const prev=$('bm-cover-preview');
+  if(url){
+    prev.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentNode.innerHTML='📖';"/>`;
+  } else {
+    prev.textContent='📖';
+  }
+}
+
+// clicking the mini preview opens cover picker (same as right-click → Change Cover)
+document.addEventListener('click',e=>{
+  if(e.target.closest('#bm-cover-preview')){
+    // sync current url to cover modal and open it
+    _coverBookId='__inline__';
+    $('cover-url-input').value=$('bm-cover-url').value||'';
+    $('cover-err').textContent='';
+    updateCoverPreview($('bm-cover-url').value||'');
+    openModal('cover-modal');
+  }
+});
+
+function openAddBook(){
+  editingBookId=null;
+  $('book-modal-title').textContent='Add New Book';
+  $('bm-title').value='';
+  $('bm-cover-url').value='';
+  $('bm-err').textContent='';
+  updateBmCoverPreview('');
+  buildPartsUI();
+  openModal('book-modal');
+}
+
+function openEditBook(id){
+  const book=books.find(b=>b.id===id);
+  if(!book) return;
+  editingBookId=id;
+  $('book-modal-title').textContent='Edit Book';
+  $('bm-title').value=book.title;
+  $('bm-cover-url').value=book.coverUrl||'';
+  $('bm-err').textContent='';
+  $('bm-err').style.color='';
+  updateBmCoverPreview(book.coverUrl||'');
+  buildPartsUI(book.parts);
+  openModal('book-modal');
+}
+
+$('btn-add-book').addEventListener('click', openAddBook);
+
+$('bm-cover-url').addEventListener('input',()=>{
+  updateBmCoverPreview($('bm-cover-url').value.trim());
+});
+
+$('btn-save-book').addEventListener('click',()=>{
+  const err=$('bm-err');
+  const title=$('bm-title').value.trim();
+  const coverUrl=$('bm-cover-url').value.trim();
+  const parts=getPartsFromUI();
+
+  if(!title){err.textContent='Book title required';return;}
+  if(parts.length===0){
+    err.textContent='অন্তত একটি PDF Part যোগ করুন।';return;
+  }
+  if(parts.some(p=>!p.scriptId)){
+    err.textContent='প্রতিটি Part-এ একটি Script select করুন।';return;
+  }
+  if(parts.some(p=>!p.fileId)){
+    err.textContent='প্রতিটি Part-এ Google Drive File ID দিন।';return;
+  }
+
+  if(editingBookId){
+    const idx=books.findIndex(b=>b.id===editingBookId);
+    books[idx]={...books[idx],title,coverUrl,parts};
+  } else {
+    books.push({id:genId(),title,coverUrl,parts,lastPage:0,classId:currentClassId,isDefault:false});
+  }
+  saveBooks(books);
+  closeModal('book-modal');
+  renderLibrary();
+});
+
+// ═══════════════════════════════════════════
+// DELETE
+// ═══════════════════════════════════════════
+function deleteBook(id){
+  const b=books.find(x=>x.id===id); if(!b) return;
+  if(b.isDefault){
+    showConfirm({
+      icon:'⭐',title:'Built-in Book',
+      msg:`"${b.title}" একটি built-in বই। এটি txt ফাইল থেকে load হয়, তাই delete করা যাবে না।`,
+      sub:'txt ফাইল থেকে বইটি সরিয়ে দিলে আর দেখাবে না।',
+      okLabel:'বুঝেছি',
+      onOk:()=>{}
+    });
+    return;
+  }
+  showConfirm({
+    icon:'🗑',title:'Delete Book',
+    msg:`"${b.title}" বইটি মুছে ফেলা হবে।`,
+    sub:'এই কাজটি undo করা যাবে না।',
+    okLabel:'Delete',
+    onOk:()=>{
+      books=books.filter(x=>x.id!==id);
+      saveBooks(books); renderLibrary();
+    }
+  });
+}
+
+// ── Custom Confirm ──
+let _confirmCb=null;
+function showConfirm({icon='⚠️',title='Confirm',msg='',sub='',okLabel='OK',onOk}){
+  $('confirm-icon').textContent=icon;
+  $('confirm-title').textContent=title;
+  $('confirm-msg').textContent=msg;
+  $('confirm-sub').textContent=sub;
+  $('confirm-ok').textContent=okLabel;
+  _confirmCb=onOk;
+  openModal('confirm-modal');
+}
+$('confirm-ok').addEventListener('click',()=>{
+  closeModal('confirm-modal');
+  if(_confirmCb){ _confirmCb(); _confirmCb=null; }
+});
+
+// ═══════════════════════════════════════════
+// CONTEXT MENU
+// ═══════════════════════════════════════════
+let ctxBookId=null;
+const ctxMenu=$('ctx-menu');
+
+async function showCtxMenu(e, bookId){
+  ctxBookId=bookId;
+  const x=Math.min(e.clientX, window.innerWidth-220);
+  const y=Math.min(e.clientY, window.innerHeight-300);
+  ctxMenu.style.left=x+'px'; ctxMenu.style.top=y+'px';
+  ctxMenu.style.display='block';
+
+  // calculate this book's cache size
+  const sizeEl=$('ctx-cache-size');
+  sizeEl.textContent='';
+  try{
+    const book=books.find(b=>b.id===bookId); if(!book) return;
+    let total=0;
+    for(let i=0;i<book.parts.length;i++){
+      const d=await cacheGet(cacheKey(bookId,i));
+      if(d instanceof Uint8Array) total+=d.byteLength;
+    }
+    if(total===0) sizeEl.textContent='(not cached)';
+    else if(total<1024*1024) sizeEl.textContent='('+( total/1024).toFixed(1)+' KB)';
+    else sizeEl.textContent='('+(total/1024/1024).toFixed(1)+' MB)';
+  }catch{ sizeEl.textContent=''; }
+}
+function hideCtxMenu(){ ctxMenu.style.display='none'; ctxBookId=null; }
+
+document.addEventListener('click', e=>{
+  if(!ctxMenu.contains(e.target)) hideCtxMenu();
+});
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape') hideCtxMenu();
+});
+
+$('ctx-open').addEventListener('click',()=>{
+  const b=books.find(x=>x.id===ctxBookId); hideCtxMenu(); if(b) openBook(b);
+});
+$('ctx-edit').addEventListener('click',()=>{
+  const id=ctxBookId; hideCtxMenu(); openEditBook(id);
+});
+$('ctx-add-part').addEventListener('click',()=>{
+  const id=ctxBookId; hideCtxMenu();
+  openEditBook(id);
+  // scroll to bottom of parts after modal opens
+  setTimeout(()=>{ addPartRow(); $('parts-list').lastElementChild?.scrollIntoView({behavior:'smooth'}); },200);
+});
+$('ctx-sort-parts').addEventListener('click',()=>{
+  const id=ctxBookId; hideCtxMenu();
+  openEditBook(id);
+  setTimeout(()=>{
+    $('bm-err').textContent='⠿ Drag the handles to reorder parts, then Save.';
+    $('bm-err').style.color='var(--gold)';
+  },200);
+});
+let _coverBookId=null;
+$('ctx-change-icon').addEventListener('click',()=>{
+  const id=ctxBookId; hideCtxMenu();
+  const b=books.find(x=>x.id===id); if(!b) return;
+  _coverBookId=id;
+  $('cover-url-input').value=b.coverUrl||'';
+  $('cover-err').textContent='';
+  updateCoverPreview(b.coverUrl||'');
+  openModal('cover-modal');
+});
+
+function updateCoverPreview(url){
+  const prev=$('cover-preview');
+  if(url){
+    prev.innerHTML=`<img src="${url}" alt="" onerror="$('cover-err').textContent='Image could not be loaded.';"/>`;
+  } else {
+    prev.innerHTML='<span class="cp-placeholder">🖼</span>';
+  }
+}
+
+$('cover-url-input').addEventListener('input',()=>{
+  $('cover-err').textContent='';
+  const url=$('cover-url-input').value.trim();
+  if(url.length>10) updateCoverPreview(url);
+  else updateCoverPreview('');
+});
+$('cover-save').addEventListener('click',()=>{
+  const url=$('cover-url-input').value.trim();
+  if(_coverBookId==='__inline__'){
+    // writing back to book modal
+    $('bm-cover-url').value=url;
+    updateBmCoverPreview(url);
+    closeModal('cover-modal'); return;
+  }
+  const b=books.find(x=>x.id===_coverBookId); if(!b) return;
+  b.coverUrl=url;
+  saveBooks(books); renderLibrary(); closeModal('cover-modal');
+});
+$('cover-clear').addEventListener('click',()=>{
+  if(_coverBookId==='__inline__'){
+    $('bm-cover-url').value='';
+    updateBmCoverPreview('');
+    closeModal('cover-modal'); return;
+  }
+  const b=books.find(x=>x.id===_coverBookId); if(!b) return;
+  b.coverUrl='';
+  saveBooks(books); renderLibrary(); closeModal('cover-modal');
+});
+$('ctx-bookmark').addEventListener('click',()=>{
+  const id=ctxBookId; hideCtxMenu();
+  const b=books.find(x=>x.id===id); if(!b) return;
+  const pg=b.lastPage;
+  if(pg) alert(`Last read: Page ${pg}`);
+  else alert('No bookmark saved for this book yet.');
+});
+$('ctx-remove-cache').addEventListener('click',async()=>{
+  const id=ctxBookId; hideCtxMenu();
+  const b=books.find(x=>x.id===id); if(!b) return;
+  showConfirm({
+    icon:'🗂',
+    title:'Remove Cache',
+    msg:`"${b.title}" এর cached data মুছে ফেলা হবে।`,
+    sub:'পরের বার বইটা খুললে আবার download হবে।',
+    okLabel:'Remove',
+    onOk:async()=>{
+      await clearBookCache(id);
+      renderLibrary(); // refresh badges
+    }
+  });
+});
+
+$('ctx-delete').addEventListener('click',()=>{
+  const id=ctxBookId; hideCtxMenu(); deleteBook(id);
+});
+
+// ── Settings modal ──
+$('btn-settings-lib').addEventListener('click', async()=>{
+  $('cache-total-size').textContent='Calculating...';
+  openModal('settings-modal');
+  const size=await calcCacheSize();
+  $('cache-total-size').textContent='Total cached: '+size;
+});
+
+$('btn-clear-all-cache').addEventListener('click',()=>{
+  showConfirm({
+    icon:'🗂',
+    title:'Clear All Caches',
+    msg:'সব বইয়ের cached PDF data মুছে ফেলা হবে।',
+    sub:'বইয়ের list এবং তথ্য অক্ষত থাকবে।',
+    okLabel:'Clear All',
+    onOk:async()=>{
+      await clearAllCache();
+      closeModal('settings-modal');
+      renderLibrary();
+    }
+  });
+});
+
+// ═══════════════════════════════════════════
+// EXPORT / IMPORT
+// ═══════════════════════════════════════════
+$('btn-export-json').addEventListener('click',()=>{
+  // export current class's user books + scripts
+  const userBks = currentClassId ? loadUserBooks(currentClassId) : [];
+  const data = { classId: currentClassId, books: userBks, scripts, exported: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `class${currentClassId||'_'}-library.json`;
+  a.click();
+});
+
+$('btn-import-json').addEventListener('click',()=>$('import-file-input').click());
+$('import-file-input').addEventListener('change',e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      const targetClass = data.classId || currentClassId;
+      if(data.books && targetClass){
+        const existing = loadUserBooks(targetClass);
+        const merged = [...existing, ...data.books.filter(nb=>!existing.find(b=>b.id===nb.id))];
+        saveUserBooks(targetClass, merged);
+      }
+      if(data.scripts) scripts=[...scripts,...data.scripts.filter(ns=>!scripts.find(s=>s.id===ns.id))];
+      saveScripts(scripts);
+      if(currentClassId){ refreshBooksForClass(currentClassId); renderLibrary(); }
+      alert('Import সফল হয়েছে!');
+    }catch{ alert('Invalid JSON file'); }
+  };
+  reader.readAsText(file);
+  e.target.value='';
+});
+
+// ═══════════════════════════════════════════
+// COPY PROTECTION (reader only)
+// ═══════════════════════════════════════════
+const inInput = e => ['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName);
+document.addEventListener('contextmenu', e=>{
+  if(inInput(e)) return;
+  // only suppress on reader screen; library handles book cards separately
+  if($('reader-screen').classList.contains('open')){ e.preventDefault(); return; }
+  // on library: suppress everywhere EXCEPT book cards
+  if(!e.target.closest('.book-card')) e.preventDefault();
+});
+document.addEventListener('selectstart', e=>{ if(!inInput(e)) e.preventDefault(); });
+document.addEventListener('dragstart',   e=>{ if(!inInput(e)) e.preventDefault(); });
+['copy','cut','paste'].forEach(ev=>
+  document.addEventListener(ev,e=>{ if(!inInput(e)) e.preventDefault(); })
+);
+document.addEventListener('keydown',e=>{
+  if(inInput(e)) return;
+  const k=e.key.toLowerCase();
+  if((e.ctrlKey||e.metaKey)&&'cxasupi'.includes(k)){e.preventDefault();return;}
+  if(k==='f12'){e.preventDefault();return;}
+  if($('reader-screen').classList.contains('open')&&!$('book-modal').classList.contains('open')){
+    if(k==='arrowright'||k==='arrowdown') goNext();
+    if(k==='arrowleft' ||k==='arrowup')   goPrev();
+  }
+});
+setInterval(()=>{
+  if(!$('reader-screen').classList.contains('open')) return;
+  document.body.style.filter=(window.outerWidth-window.innerWidth>160||window.outerHeight-window.innerHeight>160)?'blur(20px)':'';
+},1000);
+
+// ═══════════════════════════════════════════
+// INDEXEDDB CACHE LAYER
+// ═══════════════════════════════════════════
+const IDB_NAME    = 'dlib_pdf_cache';
+const IDB_STORE   = 'pdfs';
+const IDB_VERSION = 1;
+let _idb = null;
+
+function openIDB(){
+  if(_idb) return Promise.resolve(_idb);
+  return new Promise((res,rej)=>{
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains(IDB_STORE))
+        db.createObjectStore(IDB_STORE); // key = bookId_partIndex
+    };
+    req.onsuccess = e => { _idb=e.target.result; res(_idb); };
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+
+async function cacheGet(key){
+  const db=await openIDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(IDB_STORE,'readonly');
+    const req=tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess=()=>res(req.result||null);
+    req.onerror=e=>rej(e.target.error);
+  });
+}
+
+async function cacheSet(key, data){
+  const db=await openIDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(IDB_STORE,'readwrite');
+    const req=tx.objectStore(IDB_STORE).put(data, key);
+    req.onsuccess=()=>res();
+    req.onerror=e=>rej(e.target.error);
+  });
+}
+
+async function cacheDel(key){
+  const db=await openIDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(IDB_STORE,'readwrite');
+    const req=tx.objectStore(IDB_STORE).delete(key);
+    req.onsuccess=()=>res();
+    req.onerror=e=>rej(e.target.error);
+  });
+}
+
+async function cacheKeys(){
+  const db=await openIDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(IDB_STORE,'readonly');
+    const req=tx.objectStore(IDB_STORE).getAllKeys();
+    req.onsuccess=()=>res(req.result);
+    req.onerror=e=>rej(e.target.error);
+  });
+}
+
+// cache key per book-part
+function cacheKey(bookId, partIdx){ return `${bookId}_${partIdx}`; }
+
+// check if all parts of a book are cached
+async function bookFullyCached(book){
+  for(let i=0;i<book.parts.length;i++){
+    const d=await cacheGet(cacheKey(book.id,i));
+    if(!d) return false;
+  }
+  return true;
+}
+
+// delete all parts of a book from cache + reset lastPage
+async function clearBookCache(bookId){
+  const keys=await cacheKeys();
+  for(const k of keys){
+    if(k.startsWith(bookId+'_')) await cacheDel(k);
+  }
+  // also reset the reading position
+  const idx=books.findIndex(b=>b.id===bookId);
+  if(idx>=0){ books[idx].lastPage=0; saveBooks(books); }
+}
+
+// delete everything + reset all reading positions
+async function clearAllCache(){
+  const keys=await cacheKeys();
+  for(const k of keys) await cacheDel(k);
+  books=books.map(b=>({...b,lastPage:0}));
+  saveBooks(books);
+}
+
+// calculate total cache size (approximate)
+async function calcCacheSize(){
+  try{
+    const db=await openIDB();
+    const keys=await cacheKeys();
+    let total=0;
+    for(const k of keys){
+      const d=await cacheGet(k);
+      if(d instanceof Uint8Array) total+=d.byteLength;
+    }
+    if(total===0) return 'Empty';
+    if(total<1024*1024) return (total/1024).toFixed(1)+' KB';
+    return (total/1024/1024).toFixed(1)+' MB';
+  }catch{ return 'Unknown'; }
+}
+
+// update cache badges on library cards
+async function updateCacheBadges(){
+  for(const book of books){
+    const cached=await bookFullyCached(book);
+    const badge=document.querySelector(`.cache-badge[data-bid="${book.id}"]`);
+    if(badge) badge.style.display=cached?'block':'none';
+  }
+}
+
+// ═══════════════════════════════════════════
+// READER ENGINE
+// ═══════════════════════════════════════════
+let currentBook   = null;
+let partDocs      = [];   // loaded PDFDocumentProxy per part
+let partOffsets   = [];   // global page offset for each part [0, p1pages, p1+p2pages, ...]
+let totalPages    = 0;
+let currentSpread = 0;
+let isAnimating   = false;
+let pageW=0, pageH=0, mobileMode=false;
+
+// helpers
+function extractId(s){
+  s = s.trim();
+  // Google Drive /d/ID/... format
+  let m = s.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+  if(m) return m[1];
+  // open?id=ID or export?id=ID format
+  m = s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if(m) return m[1];
+  // bare ID (no slashes, no spaces) — return as-is
+  if(/^[a-zA-Z0-9_-]{10,}$/.test(s)) return s;
+  return s;
+}
+function setProgress(p,s){ $('pb').style.width=p+'%'; if(s) $('loading-sub').textContent=s; }
+function showError(t,m){
+  $('loading-overlay').style.display='none';
+  $('err-title').textContent=t; $('err-msg').textContent=m;
+  $('error-box').style.display='flex';
+}
+
+// JSONP
+function jsonpFetch(url){
+  return new Promise((res,rej)=>{
+    const cb='_fb'+Date.now();
+    const s=document.createElement('script');
+    const t=setTimeout(()=>{cleanup();rej(new Error('Timeout'));},90000);
+    function cleanup(){clearTimeout(t);delete window[cb];s.remove();}
+    window[cb]=d=>{cleanup();res(d);};
+    s.src=url+'&callback='+cb;
+    s.onerror=()=>{cleanup();rej(new Error('Script load failed'));};
+    document.head.appendChild(s);
+  });
+}
+
+async function fetchPDFDoc(scriptId, fileId, cacheKeyStr){
+  // 1. try cache first
+  if(cacheKeyStr){
+    try{
+      const cached=await cacheGet(cacheKeyStr);
+      if(cached instanceof Uint8Array){
+        return pdfjsLib.getDocument({data:cached}).promise;
+      }
+    }catch(e){ console.warn('Cache read failed',e); }
+  }
+
+  // 2. fetch from Google Drive via Apps Script
+  const scriptObj = scripts.find(s=>s.id===scriptId);
+  if(!scriptObj) throw new Error('Script পাওয়া যাচ্ছে না। Scripts Manager-এ URL যোগ করুন।');
+  if(!fileId) throw new Error('File ID দেওয়া হয়নি।');
+
+  const url = scriptObj.url+'?fileId='+encodeURIComponent(fileId);
+  let json;
+  try{
+    const r=await fetch(url,{redirect:'follow'});
+    if(!r.ok) throw new Error('Server error: HTTP '+r.status);
+    json=await r.json();
+  }catch(e){
+    try{ json=await jsonpFetch(url); }
+    catch(e2){ throw new Error('PDF লোড করা যাচ্ছে না। ইন্টারনেট সংযোগ এবং Script URL চেক করুন।\n'+e2.message); }
+  }
+  if(json.error) throw new Error('Apps Script Error: '+json.error);
+  if(!json.data)  throw new Error('PDF data পাওয়া যায়নি। File ID সঠিক কিনা এবং Script-এ file access আছে কিনা চেক করুন।');
+  const bin=atob(json.data), buf=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+
+  // 3. save to cache
+  if(cacheKeyStr){
+    try{ await cacheSet(cacheKeyStr, buf); }
+    catch(e){ console.warn('Cache write failed',e); }
+  }
+
+  return pdfjsLib.getDocument({data:buf}).promise;
+}
+
+// ═══════════════════════════════════════════
+// TOC ENGINE
+// ═══════════════════════════════════════════
+
+// ═══════════════════════════════════════════
+// CLASS SCREEN — RENDER & FETCH
+// ═══════════════════════════════════════════
+
+function showClassScreen() {
+  $('class-screen').style.display = 'flex';
+  $('library-screen').style.display = 'none';
+  $('reader-screen').classList.remove('open');
+  document.title = '📚 Digital Library';
+  currentClassId = null;
+}
+
+function showLibraryScreen(classId) {
+  currentClassId = classId;
+  $('class-screen').style.display = 'none';
+  $('library-screen').style.display = 'flex';
+  // update header title
+  const label = CLASS_LABELS[classId] || `Class ${classId}`;
+  $('lib-class-name').textContent = `📚 ${label}`;
+  refreshBooksForClass(classId);
+  renderLibrary();
+}
+
+// ── Fetch + parse a class txt file ──
+async function fetchClassData(classId) {
+  if (classData[classId]) return classData[classId]; // already loaded
+  try {
+    const resp = await fetch(CLASS_FILES[classId]);
+    if (!resp.ok) throw new Error('not found');
+    const text = await resp.text();
+    classData[classId] = parseClassTxt(text, classId);
+  } catch(e) {
+    classData[classId] = []; // empty — txt not found yet
+  }
+  return classData[classId];
+}
+
+// ── Render class grid ──
+function renderClassScreen() {
+  const primary   = [1, 2, 3, 4, 5];
+  const secondary = [6, 7, 8, 'ssc'];
+  const higher    = ['hsc'];
+
+  function makeCard(classId) {
+    const card = document.createElement('div');
+    card.className = 'class-card class-card-loading';
+    card.dataset.classId = classId;
+    const label  = CLASS_LABELS[classId]     || `Class ${classId}`;
+    const numTxt = CLASS_DISPLAY_NUM[classId] || classId;
+
+    // SSC/HSC cards একটু বড় badge দেখাবে
+    const isLevel = (classId === 'ssc' || classId === 'hsc');
+    card.innerHTML = `
+      <div class="class-card-num" style="${isLevel ? 'font-size:22px' : ''}">${numTxt}</div>
+      <div class="class-card-label">${label}</div>
+      <div class="class-card-badge"><span class="class-spin"></span></div>`;
+
+    card.addEventListener('click', async () => {
+      await fetchClassData(classId);
+      showLibraryScreen(classId);
+    });
+
+    // async: fetch book count
+    fetchClassData(classId).then(bks => {
+      const badge    = card.querySelector('.class-card-badge');
+      const userBks  = loadUserBooks(classId);
+      const total    = bks.length + userBks.length;
+      badge.innerHTML = total > 0 ? `${total} টি বই` : 'খালি';
+      card.classList.remove('class-card-loading');
+    });
+
+    return card;
+  }
+
+  $('grid-primary').innerHTML   = '';
+  $('grid-secondary').innerHTML = '';
+  $('grid-higher').innerHTML    = '';
+
+  primary.forEach(c   => $('grid-primary').appendChild(makeCard(c)));
+  secondary.forEach(c => $('grid-secondary').appendChild(makeCard(c)));
+  higher.forEach(c    => $('grid-higher').appendChild(makeCard(c)));
+}
+
+// back to class screen from library
+$('btn-back-to-classes').addEventListener('click', () => {
+  showClassScreen();
+  renderClassScreen();
+});
+
+// class screen script button → same scripts modal
+$('btn-class-scripts').addEventListener('click', () => {
+  renderScriptsList(); openModal('scripts-modal');
+});
+// class screen settings button
+$('btn-class-settings').addEventListener('click', async () => {
+  $('cache-total-size').textContent = 'Calculating...';
+  openModal('settings-modal');
+  const size = await calcCacheSize();
+  $('cache-total-size').textContent = 'Total cached: ' + size;
+});
+
+// ═══════════════════════════════════════════
+// TOC ENGINE
+// ═══════════════════════════════════════════
+
+// ── Render TOC tree in left panel ──
+let _tocOpenMap = {}; // title → boolean (expanded state)
+
+function renderTOC(nodes) {
+  const tree = $('toc-tree');
+  const empty = $('toc-empty');
+
+  if (!nodes || nodes.length === 0) {
+    tree.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  tree.style.display = 'block';
+  empty.style.display = 'none';
+  tree.innerHTML = '';
+
+  function buildTree(nodeList, depth, parentEl) {
+    nodeList.forEach(node => {
+      const hasChildren = node.children && node.children.length > 0;
+      const isOpen = _tocOpenMap[node.title] !== false; // default open
+
+      // item row
+      const item = document.createElement('div');
+      item.className = `toc-item toc-depth-${Math.min(depth, 3)}`;
+
+      const toggle = document.createElement('span');
+      toggle.className = 'toc-toggle' + (hasChildren ? (isOpen ? ' open' : '') : ' leaf');
+      toggle.textContent = hasChildren ? '▶' : '•';
+
+      const label = document.createElement('span');
+      label.className = 'toc-label';
+      label.textContent = node.title;
+      label.title = node.title;
+
+      const pageEl = document.createElement('span');
+      pageEl.className = 'toc-page';
+      pageEl.textContent = node.page ? node.page : '';
+
+      item.appendChild(toggle);
+      item.appendChild(label);
+      item.appendChild(pageEl);
+      parentEl.appendChild(item);
+
+      // children container
+      const childWrap = document.createElement('div');
+      childWrap.className = 'toc-children' + (isOpen ? '' : ' collapsed');
+      if (hasChildren) {
+        childWrap.style.maxHeight = isOpen ? '9999px' : '0';
+      }
+      parentEl.appendChild(childWrap);
+
+      if (hasChildren) {
+        buildTree(node.children, depth + 1, childWrap);
+
+        // toggle expand/collapse
+        toggle.addEventListener('click', e => {
+          e.stopPropagation();
+          const open = !toggle.classList.contains('open');
+          toggle.classList.toggle('open', open);
+          childWrap.classList.toggle('collapsed', !open);
+          childWrap.style.maxHeight = open ? '9999px' : '0';
+          _tocOpenMap[node.title] = open;
+        });
+      }
+
+      // click: jump to page
+      item.addEventListener('click', () => {
+        if (node.page && node.page >= 1 && node.page <= totalPages) {
+          jumpToPage(node.page);
+        }
+        // highlight active
+        $('toc-tree').querySelectorAll('.toc-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+      });
+    });
+  }
+
+  buildTree(nodes, 0, tree);
+}
+
+// ── Jump to a specific page number ──
+function jumpToPage(pageNum) {
+  if (!currentBook || !totalPages) return;
+  const pg = Math.max(1, Math.min(pageNum, totalPages));
+  const newSpread = mobileMode ? pg - 1 : Math.floor((pg - 1) / 2);
+  if (newSpread === currentSpread) return;
+  flipTo(newSpread, newSpread > currentSpread ? 'fwd' : 'bwd');
+}
+
+// ── Highlight TOC item that matches current page ──
+function syncTOCHighlight() {
+  if (!currentBook) return;
+  const nodes = loadBookTOC(currentBook.id);
+  if (!nodes || nodes.length === 0) return;
+  const { L } = s2p(currentSpread);
+
+  // flatten all nodes
+  function flatten(list) {
+    let out = [];
+    list.forEach(n => { out.push(n); if (n.children) out = out.concat(flatten(n.children)); });
+    return out;
+  }
+  const flat = flatten(nodes).filter(n => n.page);
+  // find the last node whose page <= current page
+  let best = null;
+  flat.forEach(n => { if (n.page <= L) best = n; });
+  if (!best) return;
+
+  $('toc-tree').querySelectorAll('.toc-item').forEach(el => {
+    if (el.querySelector('.toc-label')?.textContent === best.title) {
+      el.classList.add('active');
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else {
+      el.classList.remove('active');
+    }
+  });
+}
+
+// ── TOC Import button ──
+$('btn-toc-import').addEventListener('click', () => {
+  if (!currentBook) return;
+  const userSaved = loadAllTOC()[currentBook.id];
+  const isFromDefault = (!userSaved || userSaved.length === 0) && currentBook.isDefault;
+  const existing = loadBookTOC(currentBook.id);
+  $('toc-textarea').value = tocNodesToText(existing);
+  const errEl = $('toc-err');
+  if (isFromDefault) {
+    errEl.style.color = 'var(--gold)';
+    errEl.textContent = '📌 এটি built-in সূচিপত্র। এডিট করে Save করলে আপনার পরিবর্তন সংরক্ষিত হবে।';
+  } else {
+    errEl.style.color = '';
+    errEl.textContent = '';
+  }
+  openModal('toc-modal');
+});
+
+// ── Convert nodes back to text (for editing) ──
+function tocNodesToText(nodes, depth = 0) {
+  let out = '';
+  nodes.forEach(n => {
+    const prefix = depth === 0 ? '#' : '-'.repeat(depth);
+    const pageSuffix = n.page ? ' |' + n.page : '';
+    out += prefix + ' ' + n.title + pageSuffix + '\n';
+    if (n.children && n.children.length > 0) {
+      out += tocNodesToText(n.children, depth + 1);
+    }
+  });
+  return out;
+}
+
+$('btn-toc-save').addEventListener('click', () => {
+  const text = $('toc-textarea').value.trim();
+  if (!text) {
+    $('toc-err').style.color=''; $('toc-err').textContent = 'কিছু লিখুন বা Cancel করুন।';
+    return;
+  }
+  if (!currentBook) return;
+  const nodes = parseTOCText(text);
+  if (nodes.length === 0) {
+    $('toc-err').style.color=''; $('toc-err').textContent = '# বা - দিয়ে অধ্যায় শুরু করুন।';
+    return;
+  }
+  saveBookTOC(currentBook.id, nodes);
+  renderTOC(nodes);
+  closeModal('toc-modal');
+});
+
+$('btn-toc-clear').addEventListener('click', () => {
+  $('toc-textarea').value = '';
+  if (currentBook) {
+    saveBookTOC(currentBook.id, []);
+    renderTOC([]);
+  }
+  closeModal('toc-modal');
+});
+
+// OPEN BOOK
+async function openBook(book){
+  currentBook=book;
+  currentSpread=0; isAnimating=false;
+  partDocs=[]; partOffsets=[]; totalPages=0;
+  mobileMode=false; document.body.classList.remove('mobile-mode'); $('btn-mobile').classList.remove('active');
+
+  // ── Validate parts before opening reader ──
+  if(!book.parts || book.parts.length===0){
+    showConfirm({
+      icon:'⚠️', title:'PDF নেই',
+      msg:`"${book.title}" বইয়ে কোনো PDF Part যোগ করা হয়নি।`,
+      sub:'বইটি Edit করে Script ও File ID দিন।',
+      okLabel:'Edit করুন',
+      onOk:()=>{ openEditBook(book.id); }
+    });
+    return;
+  }
+  const badPart = book.parts.find(p => !p.scriptId || !p.fileId);
+  if(badPart){
+    showConfirm({
+      icon:'⚠️', title:'অসম্পূর্ণ তথ্য',
+      msg:`"${book.title}" বইয়ের একটি Part-এ Script বা File ID নেই।`,
+      sub:'বইটি Edit করে ঠিক করুন।',
+      okLabel:'Edit করুন',
+      onOk:()=>{ openEditBook(book.id); }
+    });
+    return;
+  }
+  const missingScript = book.parts.find(p => !scripts.find(s=>s.id===p.scriptId));
+  if(missingScript){
+    showConfirm({
+      icon:'⚙️', title:'Script পাওয়া যাচ্ছে না',
+      msg:`"${book.title}" এর জন্য প্রয়োজনীয় Apps Script টি Scripts Manager-এ নেই।`,
+      sub:'Scripts বাটনে গিয়ে Script URL যোগ করুন।',
+      okLabel:'Scripts খুলুন',
+      onOk:()=>{ renderScriptsList(); openModal('scripts-modal'); }
+    });
+    return;
+  }
+
+  $('loading-overlay').style.display='flex';
+  $('loading-text').textContent='Loading "'+book.title+'"';
+  setProgress(5,'Preparing...');
+
+  $('library-screen').style.display='none';
+  $('reader-screen').classList.add('open');
+  $('error-box').style.display='none';
+  $('book-title-hud').textContent=book.title;
+  document.title=book.title;
+  // Load TOC for this book
+  _tocOpenMap = {};
+  renderTOC(loadBookTOC(book.id));
+
+  try{
+    // check cache status for loading message
+    const allCached = await bookFullyCached(book);
+    if(allCached){
+      $('loading-text').textContent='📦 Loading from cache...';
+      setProgress(20,'Instant load — no network needed!');
+    }
+
+    for(let i=0;i<book.parts.length;i++){
+      const pct = 10 + Math.floor((i/book.parts.length)*70);
+      const ck = cacheKey(book.id, i);
+      const isCached = !!(await cacheGet(ck));
+      setProgress(pct, isCached
+        ? `Part ${i+1}: loading from cache...`
+        : `Part ${i+1}: downloading from Online...`);
+      const doc = await fetchPDFDoc(book.parts[i].scriptId, book.parts[i].fileId, ck);
+      partDocs.push(doc);
+      partOffsets.push(totalPages);
+      totalPages += doc.numPages;
+    }
+
+    setProgress(84,'Almost there...');
+    if(window.innerWidth < window.innerHeight) enableMobile(true);
+    await calibrateSize(); sizeBook();
+
+    // resume from last read page
+    if(book.lastPage && book.lastPage > 1){
+      currentSpread = mobileMode
+        ? Math.min(book.lastPage-1, totalPages-1)
+        : Math.min(Math.floor((book.lastPage-1)/2), Math.ceil(totalPages/2)-1);
+      $('loading-sub').textContent='Resuming from page '+book.lastPage+'...';
+    }
+
+    await renderSpread(currentSpread); updateNav();
+    setProgress(100,'Done!');
+    setTimeout(()=>{
+      $('loading-overlay').style.opacity='0';
+      $('loading-overlay').style.transition='opacity .5s';
+      setTimeout(()=>{$('loading-overlay').style.display='none';$('loading-overlay').style.opacity='1';},500);
+    },300);
+  }catch(err){ showError('Failed to load "'+book.title+'"', err.message||String(err)); }
+}
+
+// Get PDFDocumentProxy + local page number for a global page num
+function getDocAndPage(globalPageNum){
+  // globalPageNum is 1-based
+  let docIdx=0;
+  for(let i=partDocs.length-1;i>=0;i--){
+    if(globalPageNum > partOffsets[i]){ docIdx=i; break; }
+  }
+  return { doc: partDocs[docIdx], localPage: globalPageNum - partOffsets[docIdx] };
+}
+
+// SIZE
+async function calibrateSize(){
+  const {doc,localPage}=getDocAndPage(1);
+  const pg=await doc.getPage(localPage), vp0=pg.getViewport({scale:1});
+  const wrap=$('reader-stage-wrap');
+  const vw=wrap ? wrap.clientWidth : window.innerWidth;
+  const vh=window.innerHeight;
+  const cols=mobileMode?1:2;
+  const maxW=Math.floor((vw-40)/cols), maxH=Math.floor(vh-24);
+  const sc=Math.min(maxW/vp0.width,maxH/vp0.height);
+  pageW=Math.floor(vp0.width*sc); pageH=Math.floor(vp0.height*sc);
+}
+
+function sizeBook(){
+  const ids=mobileMode?['left-page']:['left-page','right-page'];
+  ids.forEach(id=>{$(id).style.width=pageW+'px';$(id).style.height=pageH+'px';});
+  ['cvL','cvR','cvFF','cvFB'].forEach(id=>{$(id).style.width=pageW+'px';$(id).style.height=pageH+'px';});
+  $('flip-container').style.height=pageH+'px';
+  $('flip-container').style.width=pageW+'px';
+}
+
+// RENDER
+async function renderPage(num, canvas){
+  const ctx=canvas.getContext('2d'), dpr=window.devicePixelRatio||1;
+  if(num<1||num>totalPages){
+    canvas.width=Math.round(pageW*dpr); canvas.height=Math.round(pageH*dpr);
+    canvas.style.width=pageW+'px'; canvas.style.height=pageH+'px';
+    ctx.fillStyle='#f5f0e8'; ctx.fillRect(0,0,canvas.width,canvas.height); return;
+  }
+  const {doc,localPage}=getDocAndPage(num);
+  const pg=await doc.getPage(localPage), vp0=pg.getViewport({scale:1});
+  const sc=(pageW/vp0.width)*dpr, vp=pg.getViewport({scale:sc});
+  canvas.width=Math.round(vp.width); canvas.height=Math.round(vp.height);
+  canvas.style.width=pageW+'px'; canvas.style.height=pageH+'px';
+  await pg.render({canvasContext:ctx,viewport:vp}).promise;
+}
+
+// SPREAD
+function s2p(s){ return mobileMode?{L:s+1,R:s+1}:{L:s*2+1,R:s*2+2}; }
+function maxSpread(){ return mobileMode?totalPages-1:Math.ceil(totalPages/2)-1; }
+
+async function renderSpread(s){
+  const{L,R}=s2p(s);
+  if(mobileMode){
+    await renderPage(L,$('cvL'));
+    $('numL').textContent=L;
+    $('page-counter').textContent=L+' / '+totalPages;
+  } else {
+    await Promise.all([renderPage(L,$('cvL')),renderPage(R,$('cvR'))]);
+    $('numL').textContent=L<=totalPages?L:'';
+    $('numR').textContent=R<=totalPages?R:'';
+    $('page-counter').textContent=L+'–'+Math.min(R,totalPages)+' / '+totalPages;
+  }
+}
+
+
+
+function updateNav(){
+  // autosave reading position
+  if(currentBook){
+    const {L}=s2p(currentSpread);
+    const idx=books.findIndex(b=>b.id===currentBook.id);
+    if(idx>=0 && books[idx].lastPage!==L){
+      books[idx].lastPage=L;
+      currentBook.lastPage=L;
+      saveBooks(books);
+    }
+  }
+  // sync TOC highlight to current page
+  syncTOCHighlight();
+}
+
+// FLIP
+async function flipTo(next,dir){
+  if(isAnimating) return; isAnimating=true;
+  const fc=$('flip-container');
+  const{L:cL,R:cR}=s2p(currentSpread), {L:nL,R:nR}=s2p(next);
+
+  if(mobileMode){
+    $('left-page').style.transition='opacity .3s';
+    $('left-page').style.opacity='0';
+    await new Promise(r=>setTimeout(r,300));
+    currentSpread=next; await renderSpread(currentSpread);
+    $('left-page').style.opacity='1';
+    setTimeout(()=>{$('left-page').style.transition='';},300);
+  } else {
+    const off=document.createElement('canvas');
+    if(dir==='fwd'){
+      await Promise.all([renderPage(cR,$('cvFF')),renderPage(nL,$('cvFB')),renderPage(nR,off)]);
+      fc.style.left='auto'; fc.style.right='0';
+      const ctx=$('cvR').getContext('2d');
+      $('cvR').width=off.width; $('cvR').height=off.height;
+      $('cvR').style.width=pageW+'px'; $('cvR').style.height=pageH+'px';
+      ctx.drawImage(off,0,0);
+      $('numR').textContent=nR<=totalPages?nR:'';
+    } else {
+      await Promise.all([renderPage(cL,$('cvFF')),renderPage(nR,$('cvFB')),renderPage(nL,off)]);
+      fc.style.right='auto'; fc.style.left='0';
+      const ctx=$('cvL').getContext('2d');
+      $('cvL').width=off.width; $('cvL').height=off.height;
+      $('cvL').style.width=pageW+'px'; $('cvL').style.height=pageH+'px';
+      ctx.drawImage(off,0,0);
+      $('numL').textContent=nL<=totalPages?nL:'';
+    }
+    fc.style.display='block'; fc.className=dir==='fwd'?'flip-fwd':'flip-bwd';
+    await new Promise(r=>setTimeout(r,650));
+    if(dir==='fwd'){
+      const ctx=$('cvL').getContext('2d');
+      $('cvL').width=$('cvFB').width; $('cvL').height=$('cvFB').height;
+      $('cvL').style.width=pageW+'px'; $('cvL').style.height=pageH+'px';
+      ctx.drawImage($('cvFB'),0,0);
+      $('numL').textContent=nL<=totalPages?nL:'';
+    } else {
+      const ctx=$('cvR').getContext('2d');
+      $('cvR').width=$('cvFB').width; $('cvR').height=$('cvFB').height;
+      $('cvR').style.width=pageW+'px'; $('cvR').style.height=pageH+'px';
+      ctx.drawImage($('cvFB'),0,0);
+      $('numR').textContent=nR<=totalPages?nR:'';
+    }
+    currentSpread=next;
+    const{L,R}=s2p(next);
+    $('page-counter').textContent=L+'–'+Math.min(R,totalPages)+' / '+totalPages;
+    fc.style.display='none'; fc.className='';
+  }
+  updateNav();  isAnimating=false;
+}
+
+async function goNext(){ if(isAnimating||currentSpread>=maxSpread()) return; await flipTo(currentSpread+1,'fwd'); }
+async function goPrev(){ if(isAnimating||currentSpread<=0) return; await flipTo(currentSpread-1,'bwd'); }
+
+// nav arrows removed — use scroll/swipe/keyboard
+
+// Scroll — only on stage area
+let wLock=false;
+document.addEventListener('wheel',e=>{
+  if(!$('reader-screen').classList.contains('open')) return;
+  if(!e.target.closest('#reader-stage-wrap')) return;
+  if(wLock) return; wLock=true; setTimeout(()=>wLock=false,800);
+  if(e.deltaY>0) goNext(); else goPrev();
+},{passive:true});
+
+// Touch swipe — only on stage area
+let tx=0, tTarget=false;
+document.addEventListener('touchstart',e=>{
+  tTarget=!!e.target.closest('#reader-stage-wrap');
+  tx=e.touches[0].clientX;
+},{passive:true});
+document.addEventListener('touchend',e=>{
+  if(!tTarget) return;
+  const dx=e.changedTouches[0].clientX-tx;
+  if(Math.abs(dx)>50){ dx<0?goNext():goPrev(); }
+},{passive:true});
+
+// Mobile mode
+function enableMobile(on){
+  mobileMode=on;
+  document.body.classList.toggle('mobile-mode',on);
+  $('btn-mobile').classList.toggle('active',on);
+}
+$('btn-mobile').addEventListener('click',async()=>{
+  if(!currentBook) return;
+  const wasPage=s2p(currentSpread).L;
+  enableMobile(!mobileMode);
+  currentSpread=mobileMode?wasPage-1:Math.floor((wasPage-1)/2);
+  await calibrateSize(); sizeBook(); await renderSpread(currentSpread); updateNav();
+  // update button label
+  $('btn-mobile').childNodes[2] && ($('btn-mobile').childNodes[2].textContent = mobileMode ? ' Single Page' : ' Single Page');
+});
+
+// Fullscreen
+$('btn-fs').addEventListener('click',()=>{
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen().catch(()=>{});
+});
+document.addEventListener('fullscreenchange',()=>{
+  const f=!!document.fullscreenElement;
+  $('btn-fs').classList.toggle('active',f);
+  $('fs-icon').innerHTML=f
+    ?'<path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>'
+    :'<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>';
+  $('btn-fs').querySelector('span') && ($('btn-fs').querySelector('span').textContent = f ? 'Exit Full' : 'Fullscreen');
+});
+
+// Resize
+let rt;
+window.addEventListener('resize',()=>{
+  clearTimeout(rt);
+  rt=setTimeout(async()=>{
+    if(!currentBook) return;
+    await calibrateSize(); sizeBook(); await renderSpread(currentSpread);
+  },300);
+});
+
+// Back to library (from reader)
+$('btn-back').addEventListener('click',()=>{
+  $('reader-screen').classList.remove('open');
+  if(currentClassId !== null){
+    $('library-screen').style.display='flex';
+    refreshBooksForClass(currentClassId);
+    renderLibrary();
+  } else {
+    showClassScreen();
+  }
+  currentBook=null; partDocs=[]; partOffsets=[]; totalPages=0;
+  document.title='📚 Digital Library';
+  document.body.style.filter='';
+  renderTOC([]);
+});
+$('btn-retry').addEventListener('click',()=>{
+  $('error-box').style.display='none';
+  if(currentClassId !== null){
+    $('library-screen').style.display='flex';
+  } else {
+    showClassScreen();
+  }
+});
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+window.addEventListener('load', () => {
+  renderClassScreen();
+  showClassScreen();
+});
+</script>
+</body>
+</html>
