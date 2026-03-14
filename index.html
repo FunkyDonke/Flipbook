@@ -1196,85 +1196,123 @@ let classData = {};
 let currentClassId = null;
 
 // ═══════════════════════════════════════════
-// TXT PARSER  (md ফাইলের reference অনুযায়ী)
+// TXT PARSER — actual GitHub txt format অনুযায়ী
 // ═══════════════════════════════════════════
-// txt format:
-//   * বাংলা                    ← book name
-//   coverUrl: https://...      ← optional cover (next line after *)
-//   scriptId: SCRIPT_ID        ← optional
-//   fileId: FILE_ID            ← optional
-//   # প্রথম অধ্যায় |১        ← TOC root chapter
-//   - উপবিভাগ |৩              ← depth 1
-//   -- গভীর |৫                ← depth 2
+// Supported formats:
+//   *চারুপাঠ          or   * চারুপাঠ         ← book name (* with or without space)
+//   icon: 📗                                   ← optional metadata
+//   coverUrl: https://...
+//   scriptId: ...  /  fileId: ...
+//   #গদ্য            or   # গদ্য              ← TOC chapter (# with or without space)
+//   -১. সততার পুরস্কার (পৃষ্ঠা ১-৬)         ← TOC item, page in parens or |
+//   -- deeper level
+//   *অধ্যায়নামা      ← also used as sub-chapter prefix (treated as TOC if inside a book)
 
 function parseClassTxt(text, classId) {
   const lines = text.split('\n');
   const books = [];
   let currentBook = null;
-  let tocStack = [];
 
-  // simple hash for stable IDs
+  // stable hash for IDs
   function sh(s) {
     let h = 0;
     for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
     return Math.abs(h).toString(36).substring(0, 6);
   }
 
+  // Bengali digits → ASCII
+  function toAsciiDigits(s) {
+    return s.replace(/[০১২৩৪৫৬৭৮৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d));
+  }
+
+  // Extract page number from a line — supports:
+  //   "title |42"  or  "title | 42"
+  //   "title (পৃষ্ঠা ১-৬)"  → takes first number
+  //   "title (পৃষ্ঠা ৫০-৫৪)" → first number
+  function extractPage(raw) {
+    const normalized = toAsciiDigits(raw);
+
+    // pipe format: |number at end
+    const pipeM = normalized.match(/\|(\d+)\s*$/);
+    if (pipeM) return { title: raw.substring(0, raw.lastIndexOf('|')).trim(), page: parseInt(pipeM[1]) };
+
+    // paren format: (পৃষ্ঠা X...) or (page X) — grab first number inside
+    const parenIdx = normalized.lastIndexOf('(');
+    if (parenIdx >= 0) {
+      const inside = normalized.substring(parenIdx);
+      const numM = inside.match(/(\d+)/);
+      if (numM) {
+        return { title: raw.substring(0, parenIdx).trim(), page: parseInt(numM[1]) };
+      }
+    }
+
+    return { title: raw.trim(), page: null };
+  }
+
   lines.forEach(rawLine => {
-    const line = rawLine.trimEnd();
+    const line    = rawLine.trimEnd();
     const trimmed = line.trim();
     if (!trimmed) return;
 
-    // ── Book definition ──
-    if (trimmed.startsWith('* ')) {
-      const title = trimmed.substring(2).trim();
+    // ── Book definition: * (with or without space after) ──
+    // Must start with * but NOT ** (which in some formats means optional)
+    if (trimmed.startsWith('*') && !trimmed.startsWith('**')) {
+      // Could be "* Title" or "*Title"
+      const title = trimmed.replace(/^\*+\s*/, '').trim();
       if (!title) return;
+
       currentBook = {
-        id:       `cls${classId}_${sh(title)}`,
+        id:        `cls${classId}_${sh(title)}`,
         title,
-        coverUrl: '',
-        icon:     '📖',
-        parts:    [],
-        tocText:  '',
+        coverUrl:  '',
+        icon:      '📖',
+        parts:     [],
+        tocText:   '',
         isDefault: true,
         classId,
-        lastPage: 0,
+        lastPage:  0,
       };
       books.push(currentBook);
-      tocStack = [];
       return;
     }
 
     if (!currentBook) return;
 
-    // ── Inline metadata (must come right after * line) ──
-    if (trimmed.startsWith('coverUrl:')) {
-      currentBook.coverUrl = trimmed.substring(9).trim(); return;
-    }
-    if (trimmed.startsWith('icon:')) {
-      currentBook.icon = trimmed.substring(5).trim(); return;
-    }
-    if (trimmed.startsWith('scriptId:')) {
-      // store for pairing with next fileId
-      currentBook._pendingScriptId = trimmed.substring(9).trim(); return;
-    }
-    if (trimmed.startsWith('fileId:')) {
+    // ── Metadata lines ──
+    if (trimmed.startsWith('coverUrl:'))  { currentBook.coverUrl = trimmed.substring(9).trim(); return; }
+    if (trimmed.startsWith('icon:'))      { currentBook.icon     = trimmed.substring(5).trim(); return; }
+    if (trimmed.startsWith('scriptId:')) { currentBook._sid      = trimmed.substring(9).trim(); return; }
+    if (trimmed.startsWith('fileId:'))   {
       const fid = trimmed.substring(7).trim();
-      if (currentBook._pendingScriptId) {
-        currentBook.parts.push({ scriptId: currentBook._pendingScriptId, fileId: fid });
-        delete currentBook._pendingScriptId;
-      }
+      if (currentBook._sid) { currentBook.parts.push({ scriptId: currentBook._sid, fileId: fid }); delete currentBook._sid; }
       return;
     }
 
-    // ── TOC lines ──
+    // ── TOC lines: # or - ──
     if (trimmed.startsWith('#') || trimmed.startsWith('-')) {
-      currentBook.tocText += line + '\n';
+      // Normalize: strip leading dashes/hashes, get depth
+      let depth = 0, rest = trimmed;
+      if (trimmed.startsWith('#')) {
+        depth = 0;
+        rest  = trimmed.replace(/^#+\s*/, '');
+      } else {
+        const m = trimmed.match(/^(-+)/);
+        depth = m ? m[1].length : 1;
+        // strip leading dashes + optional number+dot ("১.", "1.", "-1.")
+        rest = trimmed.replace(/^-+\s*/, '').replace(/^[০-৯\d]+\.\s*/, '');
+      }
+
+      // extract page number from rest
+      const { title, page } = extractPage(rest);
+      if (!title) return;
+
+      const prefix = depth === 0 ? '#' : '-'.repeat(depth);
+      const pageSuffix = page ? ` |${page}` : '';
+      currentBook.tocText += `${prefix} ${title}${pageSuffix}\n`;
     }
   });
 
-  // clean up temp props
-  books.forEach(b => delete b._pendingScriptId);
+  books.forEach(b => delete b._sid);
   return books;
 }
 
