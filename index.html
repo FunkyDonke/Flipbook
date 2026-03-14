@@ -635,20 +635,24 @@ body.mobile-mode #left-page{border-radius:3px;}
 #scroll-view {
   display:none;
   position:absolute;inset:0;z-index:5;
-  overflow-y:auto;overflow-x:hidden;
+  overflow-y:auto;
+  overflow-x:auto;
   background:var(--bg);
-  padding:20px 0;
   scroll-behavior:smooth;
 }
-#scroll-view::-webkit-scrollbar{width:6px;}
+#scroll-view::-webkit-scrollbar{width:6px;height:6px;}
 #scroll-view::-webkit-scrollbar-track{background:rgba(0,0,0,.2);}
 #scroll-view::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 #scroll-view::-webkit-scrollbar-thumb:hover{background:var(--gold);}
 
 #scroll-pages {
-  display:flex;flex-direction:column;
-  align-items:center;gap:12px;
-  padding-bottom:40px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
+  padding:24px 16px 48px;
+  min-width:100%;
+  box-sizing:border-box;
 }
 
 .scroll-page-wrap {
@@ -658,11 +662,16 @@ body.mobile-mode #left-page{border-radius:3px;}
   border-radius:2px;
   overflow:hidden;
   flex-shrink:0;
+  /* max-width: fit inside the container */
+  max-width:calc(100% - 0px);
 }
 .scroll-page-wrap canvas {
   display:block;
   image-rendering:high-quality;
   image-rendering:-webkit-optimize-contrast;
+  /* canvas CSS size = page display size */
+  max-width:100%;
+  height:auto;
 }
 .scroll-pnum {
   position:absolute;bottom:6px;right:10px;
@@ -2964,7 +2973,7 @@ let _scrollAbort = null;
 async function renderScrollMode() {
   if (_scrollRendering) {
     _scrollAbort = true;
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 100));
   }
   _scrollAbort = false;
   _scrollRendering = true;
@@ -2972,33 +2981,32 @@ async function renderScrollMode() {
   const container = $('scroll-pages');
   container.innerHTML = '';
 
-  const wrap = $('reader-stage-wrap');
-  // Scroll mode: use full available width (single column)
-  const availW = wrap ? wrap.clientWidth - 32 : window.innerWidth - 32;
-  const dpr = window.devicePixelRatio || 1;
+  const wrap  = $('reader-stage-wrap');
+  const dpr   = window.devicePixelRatio || 1;
+
+  // Available width inside the stage area, minus padding
+  const availW = (wrap ? wrap.clientWidth : window.innerWidth) - 32;
 
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
     if (_scrollAbort) break;
 
     const { doc, localPage } = getDocAndPage(pageNum);
-    const pg = await doc.getPage(localPage);
+    const pg  = await doc.getPage(localPage);
     const vp0 = pg.getViewport({ scale: 1 });
 
-    // Scale: fit width OR original size — whichever is larger (no shrinking)
-    const fitScale    = availW / vp0.width;
-    // Original 1:1 scale with DPR (true physical pixels)
-    // 72 PDF points = 1 inch, screen DPI ~96, so 1:1 = 96/72 ≈ 1.33×
-    const screenScale = (window.screen.width / window.screen.availWidth) || 1;
-    // Use fit scale but ensure at least 1:1 quality
-    const cssScale    = Math.max(fitScale, 1.0);
-
-    // Render at cssScale × dpr for maximum sharpness
-    const renderScale = cssScale * Math.max(dpr, 2);
-    const vp = pg.getViewport({ scale: renderScale });
+    // CSS display scale: fit page width into available area
+    // Never go larger than 1:1 screen pixel ratio to avoid blurry upscale
+    const fitScale = availW / vp0.width;
+    const cssScale = Math.min(fitScale, 96/72); // cap at 96dpi (1:1 screen)
 
     const cssW = Math.round(vp0.width  * cssScale);
     const cssH = Math.round(vp0.height * cssScale);
 
+    // Render at cssScale × max(dpr,2) for sharp text
+    const renderScale = cssScale * Math.max(dpr, renderQuality);
+    const vp = pg.getViewport({ scale: renderScale });
+
+    // Build page wrapper
     const pageWrap = document.createElement('div');
     pageWrap.className = 'scroll-page-wrap';
     pageWrap.style.width  = cssW + 'px';
@@ -3011,14 +3019,14 @@ async function renderScrollMode() {
     canvas.style.height = cssH + 'px';
 
     const pnum = document.createElement('div');
-    pnum.className = 'scroll-pnum';
+    pnum.className  = 'scroll-pnum';
     pnum.textContent = pageNum;
 
     pageWrap.appendChild(canvas);
     pageWrap.appendChild(pnum);
     container.appendChild(pageWrap);
 
-    // Render this page
+    // Render
     const ctx = canvas.getContext('2d');
     await pg.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
   }
