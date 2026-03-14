@@ -1209,7 +1209,34 @@ let currentClassId = null;
 //   *অধ্যায়নামা      ← also used as sub-chapter prefix (treated as TOC if inside a book)
 
 function parseClassTxt(text, classId) {
-  const lines = text.split('\n');
+  // ── Pre-process: join multi-line [...] blocks into single lines ──
+  // যদি একটা [ খোলা থাকে এবং ] পরের লাইনে থাকে, তাহলে জোড়া লাগাও
+  const rawLines = text.split('\n');
+  const joinedLines = [];
+  let buffer = '';
+  for (const rawLine of rawLines) {
+    const t = rawLine.trimEnd();
+    if (buffer) {
+      // we're inside an unclosed [ ... ]
+      buffer += ' ' + t.trim();
+      if (buffer.includes(']')) {
+        joinedLines.push(buffer);
+        buffer = '';
+      }
+    } else {
+      // check if this line opens a [ that doesn't close on the same line
+      const opens  = (t.match(/\[/g) || []).length;
+      const closes = (t.match(/\]/g) || []).length;
+      if (opens > closes) {
+        buffer = t;
+      } else {
+        joinedLines.push(t);
+      }
+    }
+  }
+  if (buffer) joinedLines.push(buffer); // flush any remaining
+
+  const lines = joinedLines;
   const books = [];
   let currentBook = null;
   let lastTocNode = null; // last TOC node created — source: attaches to this
@@ -1249,16 +1276,19 @@ function parseClassTxt(text, classId) {
     let m;
     while ((m = blockRe.exec(val)) !== null) {
       const inner = m[1].trim();
-      // separator is | (pipe) — NOT / because script URLs contain /
+      // separator is | (pipe) — scripts left, fileIds right
       const pipeIdx = inner.lastIndexOf('|');
       if (pipeIdx < 0) continue;
       const scriptsPart = inner.substring(0, pipeIdx).trim();
-      const fileId      = inner.substring(pipeIdx + 1).trim();
-      if (!fileId) continue;
-      // scripts: comma-separated URLs
+      const fileIdsPart  = inner.substring(pipeIdx + 1).trim();
+      if (!fileIdsPart) continue;
+      // scripts: comma-separated URLs (random selection)
       const scriptUrls = scriptsPart.split(',').map(s => s.trim()).filter(Boolean);
       if (scriptUrls.length === 0) continue;
-      parts.push({ scriptUrls, fileId });
+      // fileIds: comma-separated IDs (sequential fallback)
+      const fileIds = fileIdsPart.split(',').map(s => s.trim()).filter(Boolean);
+      if (fileIds.length === 0) continue;
+      parts.push({ scriptUrls, fileIds });
     }
     return parts;
   }
@@ -2190,7 +2220,9 @@ function jsonpFetch(url){
 // sources = [{ scriptUrls: [...], fileId: '...' }, ...]
 // প্রতিটা part-এর জন্য scriptUrls থেকে randomly একটা pick করে,
 // fail হলে বাকিগুলো randomly try করে।
-async function fetchWithRandomFailover(scriptUrls, fileId, cacheKeyStr) {
+// scriptUrls: randomly shuffled, fileIds: tried sequentially
+// For each fileId (in order): try all scripts randomly → if all fail, next fileId
+async function fetchWithRandomFailover(scriptUrls, fileIds, cacheKeyStr) {
   // 1. try cache first
   if (cacheKeyStr) {
     try {
@@ -2201,62 +2233,73 @@ async function fetchWithRandomFailover(scriptUrls, fileId, cacheKeyStr) {
     } catch(e) { console.warn('Cache read failed', e); }
   }
 
-  if (!fileId) throw new Error('File ID দেওয়া হয়নি।');
+  // backward compat: fileIds can be a single string or array
+  const ids = Array.isArray(fileIds) ? fileIds : [fileIds];
+  if (!ids.length || !ids[0]) throw new Error('File ID দেওয়া হয়নি।');
   if (!scriptUrls || scriptUrls.length === 0) throw new Error('Script URL দেওয়া হয়নি।');
 
-  // 2. shuffle scriptUrls randomly (Fisher-Yates)
-  const urls = [...scriptUrls];
-  for (let i = urls.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [urls[i], urls[j]] = [urls[j], urls[i]];
-  }
-
-  // 3. try each URL in shuffled order
-  let lastErr = null;
-  for (const scriptUrl of urls) {
-    try {
-      const url = scriptUrl + '?fileId=' + encodeURIComponent(fileId);
-      let json;
-      try {
-        const r = await fetch(url, { redirect: 'follow' });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        json = await r.json();
-      } catch(e) {
-        json = await jsonpFetch(url);
-      }
-      if (json.error) throw new Error('Script error: ' + json.error);
-      if (!json.data)  throw new Error('No PDF data');
-
-      const bin = atob(json.data), buf = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-
-      // save to cache
-      if (cacheKeyStr) {
-        try { await cacheSet(cacheKeyStr, buf); } catch(e) {}
-      }
-      return pdfjsLib.getDocument({ data: buf }).promise;
-
-    } catch(e) {
-      lastErr = e;
-      console.warn(`Script failed (${scriptUrl}):`, e.message);
-      // try next script
+  // 2. shuffle scriptUrls randomly (Fisher-Yates) — done once, reused per fileId
+  function shuffled(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
     }
+    return a;
   }
 
-  throw new Error('সব Script fail করেছে। শেষ error: ' + (lastErr?.message || 'unknown'));
+  // 3. outer loop: fileIds sequentially
+  let lastErr = null;
+  for (const fileId of ids) {
+    // inner loop: scripts randomly
+    const urls = shuffled(scriptUrls);
+    let fileSuccess = false;
+
+    for (const scriptUrl of urls) {
+      try {
+        const url = scriptUrl + '?fileId=' + encodeURIComponent(fileId);
+        let json;
+        try {
+          const r = await fetch(url, { redirect: 'follow' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          json = await r.json();
+        } catch(e) {
+          json = await jsonpFetch(url);
+        }
+        if (json.error) throw new Error('Script error: ' + json.error);
+        if (!json.data)  throw new Error('No PDF data');
+
+        const bin = atob(json.data), buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+
+        if (cacheKeyStr) {
+          try { await cacheSet(cacheKeyStr, buf); } catch(e) {}
+        }
+        return pdfjsLib.getDocument({ data: buf }).promise;
+
+      } catch(e) {
+        lastErr = e;
+        console.warn(`Failed (script: ${scriptUrl}, fileId: ${fileId}):`, e.message);
+      }
+    }
+    // all scripts failed for this fileId → try next fileId
+    console.warn(`All scripts failed for fileId: ${fileId}, trying backup...`);
+  }
+
+  throw new Error('সব File ID ও Script fail করেছে। শেষ error: ' + (lastErr?.message || 'unknown'));
 }
 
-// backward compat wrapper — old code still calls fetchPDFDoc
+// backward compat wrapper
 async function fetchPDFDoc(scriptId, fileId, cacheKeyStr, scriptUrl) {
-  // resolve to scriptUrls array
   let urls = [];
-  if (scriptUrl) {
-    urls = [scriptUrl];
-  } else if (scriptId) {
+  if (scriptUrl) urls = [scriptUrl];
+  else if (scriptId) {
     const obj = scripts.find(s => s.id === scriptId);
     if (obj) urls = [obj.url];
   }
-  return fetchWithRandomFailover(urls, fileId, cacheKeyStr);
+  // fileId can be a string (single) or array
+  const ids = Array.isArray(fileId) ? fileId : [fileId];
+  return fetchWithRandomFailover(urls, ids, cacheKeyStr);
 }
 
 // ═══════════════════════════════════════════
@@ -2482,7 +2525,7 @@ async function loadChapterPDF(node) {
       const pct = 10 + Math.floor((i / node.sources.length) * 75);
       const isCached = !!(await cacheGet(ck));
       setProgress(pct, isCached ? `Part ${i+1}: cache থেকে...` : `Part ${i+1}: download হচ্ছে...`);
-      const doc = await fetchWithRandomFailover(src.scriptUrls, src.fileId, ck);
+      const doc = await fetchWithRandomFailover(src.scriptUrls, src.fileIds, ck);
       partDocs.push(doc);
       partOffsets.push(totalPages);
       totalPages += doc.numPages;
@@ -2660,7 +2703,7 @@ async function openBook(book){
         const ck  = cacheKey(book.id, i);
         const isCached = !!(await cacheGet(ck));
         setProgress(pct, isCached ? `Part ${i+1}: cache থেকে...` : `Part ${i+1}: download হচ্ছে...`);
-        const doc = await fetchWithRandomFailover(src.scriptUrls, src.fileId, ck);
+        const doc = await fetchWithRandomFailover(src.scriptUrls, src.fileIds, ck);
         partDocs.push(doc);
         partOffsets.push(totalPages);
         totalPages += doc.numPages;
