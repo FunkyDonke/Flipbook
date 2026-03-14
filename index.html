@@ -1212,6 +1212,7 @@ function parseClassTxt(text, classId) {
   const lines = text.split('\n');
   const books = [];
   let currentBook = null;
+  let lastTocNode = null; // last TOC node created — source: attaches to this
 
   // stable hash for IDs
   function sh(s) {
@@ -1225,94 +1226,136 @@ function parseClassTxt(text, classId) {
     return s.replace(/[০১২৩৪৫৬৭৮৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d));
   }
 
-  // Extract page number from a line — supports:
-  //   "title |42"  or  "title | 42"
-  //   "title (পৃষ্ঠা ১-৬)"  → takes first number
-  //   "title (পৃষ্ঠা ৫০-৫৪)" → first number
+  // Extract page number from a line
   function extractPage(raw) {
     const normalized = toAsciiDigits(raw);
-
-    // pipe format: |number at end
     const pipeM = normalized.match(/\|(\d+)\s*$/);
     if (pipeM) return { title: raw.substring(0, raw.lastIndexOf('|')).trim(), page: parseInt(pipeM[1]) };
-
-    // paren format: (পৃষ্ঠা X...) or (page X) — grab first number inside
     const parenIdx = normalized.lastIndexOf('(');
     if (parenIdx >= 0) {
       const inside = normalized.substring(parenIdx);
       const numM = inside.match(/(\d+)/);
-      if (numM) {
-        return { title: raw.substring(0, parenIdx).trim(), page: parseInt(numM[1]) };
-      }
+      if (numM) return { title: raw.substring(0, parenIdx).trim(), page: parseInt(numM[1]) };
     }
-
     return { title: raw.trim(), page: null };
   }
+
+  // Parse one source: line → array of parts
+  // Format: [script1, script2, script3 / FILE_ID_PART1], [script4 / FILE_ID_PART2], ...
+  function parseSourceLine(val) {
+    const parts = [];
+    // match each [...] block
+    const blockRe = /\[([^\]]+)\]/g;
+    let m;
+    while ((m = blockRe.exec(val)) !== null) {
+      const inner = m[1].trim();
+      const slashIdx = inner.lastIndexOf('/');
+      if (slashIdx < 0) continue;
+      const scriptsPart = inner.substring(0, slashIdx).trim();
+      const fileId      = inner.substring(slashIdx + 1).trim();
+      if (!fileId) continue;
+      // scripts: comma-separated URLs
+      const scriptUrls = scriptsPart.split(',').map(s => s.trim()).filter(Boolean);
+      if (scriptUrls.length === 0) continue;
+      parts.push({ scriptUrls, fileId });
+    }
+    return parts;
+  }
+
+  // TOC node stack for tracking last node at each depth
+  // tocNodeStack[depth] = node reference
+  let tocNodeStack = [];
 
   lines.forEach(rawLine => {
     const line    = rawLine.trimEnd();
     const trimmed = line.trim();
     if (!trimmed) return;
 
-    // ── Book definition: * (with or without space after) ──
-    // Must start with * but NOT ** (which in some formats means optional)
+    // ── Book definition ──
     if (trimmed.startsWith('*') && !trimmed.startsWith('**')) {
-      // Could be "* Title" or "*Title"
       const title = trimmed.replace(/^\*+\s*/, '').trim();
       if (!title) return;
-
       currentBook = {
         id:        `cls${classId}_${sh(title)}`,
         title,
         coverUrl:  '',
         icon:      '📖',
-        parts:     [],
+        sources:   [], // book-level giant PDF parts
         tocText:   '',
+        tocNodes:  [], // structured TOC with sources attached
         isDefault: true,
         classId,
         lastPage:  0,
       };
       books.push(currentBook);
+      lastTocNode   = null;
+      tocNodeStack  = [];
       return;
     }
 
     if (!currentBook) return;
 
-    // ── Metadata lines ──
-    if (trimmed.startsWith('coverUrl:'))  { currentBook.coverUrl = trimmed.substring(9).trim(); return; }
-    if (trimmed.startsWith('icon:'))      { currentBook.icon     = trimmed.substring(5).trim(); return; }
-    if (trimmed.startsWith('scriptId:')) { currentBook._sid      = trimmed.substring(9).trim(); return; }
-    if (trimmed.startsWith('fileId:'))   {
-      const fid = trimmed.substring(7).trim();
-      if (currentBook._sid) { currentBook.parts.push({ scriptId: currentBook._sid, fileId: fid }); delete currentBook._sid; }
+    // ── source: line — attaches to last TOC node or book level ──
+    if (trimmed.startsWith('source:')) {
+      const val   = trimmed.substring(7).trim();
+      const parts = parseSourceLine(val);
+      if (parts.length === 0) return;
+      if (lastTocNode) {
+        // attach to last created TOC node
+        if (!lastTocNode.sources) lastTocNode.sources = [];
+        lastTocNode.sources.push(...parts);
+      } else {
+        // book-level giant PDF
+        currentBook.sources.push(...parts);
+      }
       return;
     }
 
-    // ── TOC lines: # or - ──
+    // ── Metadata ──
+    if (trimmed.startsWith('coverUrl:')) { currentBook.coverUrl = trimmed.substring(9).trim(); return; }
+    if (trimmed.startsWith('icon:'))     { currentBook.icon     = trimmed.substring(5).trim(); return; }
+
+    // ── TOC lines ──
     if (trimmed.startsWith('#') || trimmed.startsWith('-')) {
-      // Normalize: strip leading dashes/hashes, get depth
       let depth = 0, rest = trimmed;
       if (trimmed.startsWith('#')) {
         depth = 0;
         rest  = trimmed.replace(/^#+\s*/, '');
       } else {
-        const m = trimmed.match(/^(-+)/);
-        depth = m ? m[1].length : 1;
-        // strip leading dashes + optional number+dot ("১.", "1.", "-1.")
-        rest = trimmed.replace(/^-+\s*/, '').replace(/^[০-৯\d]+\.\s*/, '');
+        const dm = trimmed.match(/^(-+)/);
+        depth = dm ? dm[1].length : 1;
+        rest  = trimmed.replace(/^-+\s*/, '').replace(/^[০-৯\d]+\.\s*/, '');
       }
 
-      // extract page number from rest
       const { title, page } = extractPage(rest);
       if (!title) return;
 
-      const prefix = depth === 0 ? '#' : '-'.repeat(depth);
+      // Build tocText (for parseTOCText later)
+      const prefix     = depth === 0 ? '#' : '-'.repeat(depth);
       const pageSuffix = page ? ` |${page}` : '';
       currentBook.tocText += `${prefix} ${title}${pageSuffix}\n`;
+
+      // Build structured tocNodes tree
+      const node = { title, page: page || null, sources: [], children: [] };
+
+      if (depth === 0) {
+        currentBook.tocNodes.push(node);
+        tocNodeStack = [node];
+      } else {
+        // find parent: last node with depth < current depth
+        while (tocNodeStack.length > depth) tocNodeStack.pop();
+        const parent = tocNodeStack[tocNodeStack.length - 1];
+        if (parent) parent.children.push(node);
+        else currentBook.tocNodes.push(node);
+        tocNodeStack[depth] = node;
+        // trim stack to current depth
+        tocNodeStack = tocNodeStack.slice(0, depth + 1);
+      }
+
+      lastTocNode = node;
     }
   });
 
-  books.forEach(b => delete b._sid);
   return books;
 }
 
@@ -2045,11 +2088,12 @@ function cacheKey(bookId, partIdx){ return `${bookId}_${partIdx}`; }
 
 // check if all parts of a book are cached
 async function bookFullyCached(book){
-  for(let i=0;i<book.parts.length;i++){
+  const srcs = book.sources || book.parts || [];
+  for(let i=0;i<srcs.length;i++){
     const d=await cacheGet(cacheKey(book.id,i));
     if(!d) return false;
   }
-  return true;
+  return srcs.length > 0;
 }
 
 // delete all parts of a book from cache + reset lastPage
@@ -2141,44 +2185,77 @@ function jsonpFetch(url){
   });
 }
 
-async function fetchPDFDoc(scriptId, fileId, cacheKeyStr){
+// ── Random script selection + failover ──
+// sources = [{ scriptUrls: [...], fileId: '...' }, ...]
+// প্রতিটা part-এর জন্য scriptUrls থেকে randomly একটা pick করে,
+// fail হলে বাকিগুলো randomly try করে।
+async function fetchWithRandomFailover(scriptUrls, fileId, cacheKeyStr) {
   // 1. try cache first
-  if(cacheKeyStr){
-    try{
-      const cached=await cacheGet(cacheKeyStr);
-      if(cached instanceof Uint8Array){
-        return pdfjsLib.getDocument({data:cached}).promise;
+  if (cacheKeyStr) {
+    try {
+      const cached = await cacheGet(cacheKeyStr);
+      if (cached instanceof Uint8Array) {
+        return pdfjsLib.getDocument({ data: cached }).promise;
       }
-    }catch(e){ console.warn('Cache read failed',e); }
+    } catch(e) { console.warn('Cache read failed', e); }
   }
 
-  // 2. fetch from Google Drive via Apps Script
-  const scriptObj = scripts.find(s=>s.id===scriptId);
-  if(!scriptObj) throw new Error('Script পাওয়া যাচ্ছে না। Scripts Manager-এ URL যোগ করুন।');
-  if(!fileId) throw new Error('File ID দেওয়া হয়নি।');
+  if (!fileId) throw new Error('File ID দেওয়া হয়নি।');
+  if (!scriptUrls || scriptUrls.length === 0) throw new Error('Script URL দেওয়া হয়নি।');
 
-  const url = scriptObj.url+'?fileId='+encodeURIComponent(fileId);
-  let json;
-  try{
-    const r=await fetch(url,{redirect:'follow'});
-    if(!r.ok) throw new Error('Server error: HTTP '+r.status);
-    json=await r.json();
-  }catch(e){
-    try{ json=await jsonpFetch(url); }
-    catch(e2){ throw new Error('PDF লোড করা যাচ্ছে না। ইন্টারনেট সংযোগ এবং Script URL চেক করুন।\n'+e2.message); }
-  }
-  if(json.error) throw new Error('Apps Script Error: '+json.error);
-  if(!json.data)  throw new Error('PDF data পাওয়া যায়নি। File ID সঠিক কিনা এবং Script-এ file access আছে কিনা চেক করুন।');
-  const bin=atob(json.data), buf=new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
-
-  // 3. save to cache
-  if(cacheKeyStr){
-    try{ await cacheSet(cacheKeyStr, buf); }
-    catch(e){ console.warn('Cache write failed',e); }
+  // 2. shuffle scriptUrls randomly (Fisher-Yates)
+  const urls = [...scriptUrls];
+  for (let i = urls.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [urls[i], urls[j]] = [urls[j], urls[i]];
   }
 
-  return pdfjsLib.getDocument({data:buf}).promise;
+  // 3. try each URL in shuffled order
+  let lastErr = null;
+  for (const scriptUrl of urls) {
+    try {
+      const url = scriptUrl + '?fileId=' + encodeURIComponent(fileId);
+      let json;
+      try {
+        const r = await fetch(url, { redirect: 'follow' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        json = await r.json();
+      } catch(e) {
+        json = await jsonpFetch(url);
+      }
+      if (json.error) throw new Error('Script error: ' + json.error);
+      if (!json.data)  throw new Error('No PDF data');
+
+      const bin = atob(json.data), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+
+      // save to cache
+      if (cacheKeyStr) {
+        try { await cacheSet(cacheKeyStr, buf); } catch(e) {}
+      }
+      return pdfjsLib.getDocument({ data: buf }).promise;
+
+    } catch(e) {
+      lastErr = e;
+      console.warn(`Script failed (${scriptUrl}):`, e.message);
+      // try next script
+    }
+  }
+
+  throw new Error('সব Script fail করেছে। শেষ error: ' + (lastErr?.message || 'unknown'));
+}
+
+// backward compat wrapper — old code still calls fetchPDFDoc
+async function fetchPDFDoc(scriptId, fileId, cacheKeyStr, scriptUrl) {
+  // resolve to scriptUrls array
+  let urls = [];
+  if (scriptUrl) {
+    urls = [scriptUrl];
+  } else if (scriptId) {
+    const obj = scripts.find(s => s.id === scriptId);
+    if (obj) urls = [obj.url];
+  }
+  return fetchWithRandomFailover(urls, fileId, cacheKeyStr);
 }
 
 // ═══════════════════════════════════════════
@@ -2327,7 +2404,13 @@ function renderTOC(nodes) {
 
       const pageEl = document.createElement('span');
       pageEl.className = 'toc-page';
-      pageEl.textContent = node.page ? node.page : '';
+      // show 📄 if has own PDF sources, else show page number
+      if (node.sources && node.sources.length > 0) {
+        pageEl.textContent = '📄';
+        pageEl.title = `${node.sources.length} part(s)`;
+      } else {
+        pageEl.textContent = node.page ? node.page : '';
+      }
 
       item.appendChild(toggle);
       item.appendChild(label);
@@ -2356,19 +2439,67 @@ function renderTOC(nodes) {
         });
       }
 
-      // click: jump to page
-      item.addEventListener('click', () => {
-        if (node.page && node.page >= 1 && node.page <= totalPages) {
-          jumpToPage(node.page);
-        }
+      // click: load chapter PDF or jump to page
+      item.addEventListener('click', async () => {
         // highlight active
         $('toc-tree').querySelectorAll('.toc-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
+
+        // Priority 1: node has its own sources → load chapter PDF
+        if (node.sources && node.sources.length > 0) {
+          await loadChapterPDF(node);
+          return;
+        }
+        // Priority 2: page number → jump in giant PDF
+        if (node.page && node.page >= 1 && totalPages > 0) {
+          jumpToPage(node.page);
+          return;
+        }
+        // Priority 3: nothing — do nothing
       });
     });
   }
 
   buildTree(nodes, 0, tree);
+}
+
+// ── Load a chapter's PDF sources into the reader ──
+async function loadChapterPDF(node) {
+  if (!node.sources || node.sources.length === 0) return;
+
+  $('loading-overlay').style.display = 'flex';
+  $('loading-text').textContent = node.title;
+  setProgress(5, 'Loading chapter PDF...');
+
+  // reset reader state
+  partDocs = []; partOffsets = []; totalPages = 0; currentSpread = 0; isAnimating = false;
+
+  try {
+    for (let i = 0; i < node.sources.length; i++) {
+      const src = node.sources[i];
+      const ck  = cacheKey((currentBook?.id || 'ch') + '_' + node.title.substring(0,8), i);
+      const pct = 10 + Math.floor((i / node.sources.length) * 75);
+      const isCached = !!(await cacheGet(ck));
+      setProgress(pct, isCached ? `Part ${i+1}: cache থেকে...` : `Part ${i+1}: download হচ্ছে...`);
+      const doc = await fetchWithRandomFailover(src.scriptUrls, src.fileId, ck);
+      partDocs.push(doc);
+      partOffsets.push(totalPages);
+      totalPages += doc.numPages;
+    }
+
+    setProgress(90, 'Rendering...');
+    await calibrateSize(); sizeBook();
+    await renderSpread(0); updateNav();
+    setProgress(100, 'Done!');
+    setTimeout(() => {
+      $('loading-overlay').style.opacity = '0';
+      $('loading-overlay').style.transition = 'opacity .5s';
+      setTimeout(() => { $('loading-overlay').style.display = 'none'; $('loading-overlay').style.opacity = '1'; }, 500);
+    }, 200);
+
+  } catch(err) {
+    showError('Chapter PDF load failed', err.message || String(err));
+  }
 }
 
 // ── Jump to a specific page number ──
@@ -2474,36 +2605,19 @@ async function openBook(book){
   partDocs=[]; partOffsets=[]; totalPages=0;
   mobileMode=false; document.body.classList.remove('mobile-mode'); $('btn-mobile').classList.remove('active');
 
-  // ── Validate parts before opening reader ──
-  if(!book.parts || book.parts.length===0){
+  // ── Validate: book must have book-level sources OR chapter-level sources ──
+  const bookSources = book.sources || book.parts || [];
+  const hasTocSources = (function checkTocSources(nodes) {
+    if (!nodes) return false;
+    return nodes.some(n => (n.sources && n.sources.length > 0) || checkTocSources(n.children));
+  })(book.tocNodes || []);
+
+  if (bookSources.length === 0 && !hasTocSources) {
     showConfirm({
       icon:'⚠️', title:'PDF নেই',
-      msg:`"${book.title}" বইয়ে কোনো PDF Part যোগ করা হয়নি।`,
-      sub:'বইটি Edit করে Script ও File ID দিন।',
-      okLabel:'Edit করুন',
-      onOk:()=>{ openEditBook(book.id); }
-    });
-    return;
-  }
-  const badPart = book.parts.find(p => !p.scriptId || !p.fileId);
-  if(badPart){
-    showConfirm({
-      icon:'⚠️', title:'অসম্পূর্ণ তথ্য',
-      msg:`"${book.title}" বইয়ের একটি Part-এ Script বা File ID নেই।`,
-      sub:'বইটি Edit করে ঠিক করুন।',
-      okLabel:'Edit করুন',
-      onOk:()=>{ openEditBook(book.id); }
-    });
-    return;
-  }
-  const missingScript = book.parts.find(p => !scripts.find(s=>s.id===p.scriptId));
-  if(missingScript){
-    showConfirm({
-      icon:'⚙️', title:'Script পাওয়া যাচ্ছে না',
-      msg:`"${book.title}" এর জন্য প্রয়োজনীয় Apps Script টি Scripts Manager-এ নেই।`,
-      sub:'Scripts বাটনে গিয়ে Script URL যোগ করুন।',
-      okLabel:'Scripts খুলুন',
-      onOk:()=>{ renderScriptsList(); openModal('scripts-modal'); }
+      msg:`"${book.title}" বইয়ে কোনো PDF যোগ করা হয়নি।`,
+      sub:'txt ফাইলে source: লাইন যোগ করুন।',
+      okLabel:'বুঝেছি', onOk:()=>{}
     });
     return;
   }
@@ -2517,51 +2631,69 @@ async function openBook(book){
   $('error-box').style.display='none';
   $('book-title-hud').textContent=book.title;
   document.title=book.title;
-  // Load TOC for this book
   _tocOpenMap = {};
-  renderTOC(loadBookTOC(book.id));
 
-  try{
-    // check cache status for loading message
-    const allCached = await bookFullyCached(book);
-    if(allCached){
-      $('loading-text').textContent='📦 Loading from cache...';
-      setProgress(20,'Instant load — no network needed!');
-    }
+  // Load TOC — use tocNodes if available, else parse tocText
+  const tocNodes = book.tocNodes && book.tocNodes.length > 0
+    ? book.tocNodes
+    : loadBookTOC(book.id);
+  renderTOC(tocNodes);
 
-    for(let i=0;i<book.parts.length;i++){
-      const pct = 10 + Math.floor((i/book.parts.length)*70);
-      const ck = cacheKey(book.id, i);
-      const isCached = !!(await cacheGet(ck));
-      setProgress(pct, isCached
-        ? `Part ${i+1}: loading from cache...`
-        : `Part ${i+1}: downloading from Online...`);
-      const doc = await fetchPDFDoc(book.parts[i].scriptId, book.parts[i].fileId, ck);
-      partDocs.push(doc);
-      partOffsets.push(totalPages);
-      totalPages += doc.numPages;
-    }
+  // ── Determine what to load ──
+  // Giant PDF mode: book has book-level sources → load all parts sequentially
+  // Chapter PDF mode: handled on TOC click → here we just open reader with empty canvas
+  //   and wait for user to click a chapter
 
-    setProgress(84,'Almost there...');
-    if(window.innerWidth < window.innerHeight) enableMobile(true);
-    await calibrateSize(); sizeBook();
+  if (bookSources.length > 0) {
+    // GIANT PDF MODE
+    try {
+      const allCached = await bookFullyCached(book);
+      if (allCached) {
+        $('loading-text').textContent = '📦 Loading from cache...';
+        setProgress(20, 'Instant load — no network needed!');
+      }
 
-    // resume from last read page
-    if(book.lastPage && book.lastPage > 1){
-      currentSpread = mobileMode
-        ? Math.min(book.lastPage-1, totalPages-1)
-        : Math.min(Math.floor((book.lastPage-1)/2), Math.ceil(totalPages/2)-1);
-      $('loading-sub').textContent='Resuming from page '+book.lastPage+'...';
-    }
+      for (let i = 0; i < bookSources.length; i++) {
+        const src = bookSources[i];
+        const pct = 10 + Math.floor((i / bookSources.length) * 70);
+        const ck  = cacheKey(book.id, i);
+        const isCached = !!(await cacheGet(ck));
+        setProgress(pct, isCached ? `Part ${i+1}: cache থেকে...` : `Part ${i+1}: download হচ্ছে...`);
+        const doc = await fetchWithRandomFailover(src.scriptUrls, src.fileId, ck);
+        partDocs.push(doc);
+        partOffsets.push(totalPages);
+        totalPages += doc.numPages;
+      }
 
-    await renderSpread(currentSpread); updateNav();
-    setProgress(100,'Done!');
-    setTimeout(()=>{
-      $('loading-overlay').style.opacity='0';
-      $('loading-overlay').style.transition='opacity .5s';
-      setTimeout(()=>{$('loading-overlay').style.display='none';$('loading-overlay').style.opacity='1';},500);
-    },300);
-  }catch(err){ showError('Failed to load "'+book.title+'"', err.message||String(err)); }
+      setProgress(84, 'Almost there...');
+      if (window.innerWidth < window.innerHeight) enableMobile(true);
+      await calibrateSize(); sizeBook();
+
+      if (book.lastPage && book.lastPage > 1) {
+        currentSpread = mobileMode
+          ? Math.min(book.lastPage - 1, totalPages - 1)
+          : Math.min(Math.floor((book.lastPage - 1) / 2), Math.ceil(totalPages / 2) - 1);
+        $('loading-sub').textContent = 'Resuming from page ' + book.lastPage + '...';
+      }
+
+      await renderSpread(currentSpread); updateNav();
+      setProgress(100, 'Done!');
+      setTimeout(() => {
+        $('loading-overlay').style.opacity = '0';
+        $('loading-overlay').style.transition = 'opacity .5s';
+        setTimeout(() => { $('loading-overlay').style.display = 'none'; $('loading-overlay').style.opacity = '1'; }, 500);
+      }, 300);
+
+    } catch(err) { showError('Failed to load "' + book.title + '"', err.message || String(err)); }
+
+  } else {
+    // CHAPTER PDF MODE — just open reader, show hint
+    setProgress(100, 'Ready');
+    setTimeout(() => { $('loading-overlay').style.display = 'none'; }, 400);
+    if (window.innerWidth < window.innerHeight) enableMobile(true);
+    // Show a hint in the stage area
+    $('content-hint') && ($('content-hint').style.display = 'flex');
+  }
 }
 
 // Get PDFDocumentProxy + local page number for a global page num
