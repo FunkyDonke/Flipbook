@@ -2872,15 +2872,19 @@ async function openBook(book){
       }
 
       await renderSpread(currentSpread); updateNav();
-      // Resume: force highlight the correct TOC item after PDF is ready
-      if (savedPage > 1) {
-        setTimeout(() => syncTOCHighlight(true), 150);
-      }
+      isAnimating = false; // ensure not stuck
+
       setProgress(100, 'Done!');
+      const _resumePage = savedPage; // capture for closure
       setTimeout(() => {
         $('loading-overlay').style.opacity = '0';
         $('loading-overlay').style.transition = 'opacity .5s';
-        setTimeout(() => { $('loading-overlay').style.display = 'none'; $('loading-overlay').style.opacity = '1'; }, 500);
+        setTimeout(() => {
+          $('loading-overlay').style.display = 'none';
+          $('loading-overlay').style.opacity = '1';
+          // Highlight TOC after overlay is fully hidden
+          if (_resumePage > 1) syncTOCHighlight(true);
+        }, 500);
       }, 300);
 
     } catch(err) { showError('Failed to load "' + book.title + '"', err.message || String(err)); }
@@ -3216,22 +3220,25 @@ async function goPrev(){ if(isAnimating||currentSpread<=0) return; await flipTo(
 
 // nav arrows removed — use scroll/swipe/keyboard
 
-// Scroll — only on stage area
+// Scroll — flip mode only (not scroll mode)
 let wLock=false;
 document.addEventListener('wheel',e=>{
   if(!$('reader-screen').classList.contains('open')) return;
+  if(scrollMode) return; // scroll mode handles its own scroll
   if(!e.target.closest('#reader-stage-wrap')) return;
   if(wLock) return; wLock=true; setTimeout(()=>wLock=false,800);
   if(e.deltaY>0) goNext(); else goPrev();
 },{passive:true});
 
-// Touch swipe — only on stage area
+// Touch swipe — flip mode only
 let tx=0, tTarget=false;
 document.addEventListener('touchstart',e=>{
+  if(scrollMode) return;
   tTarget=!!e.target.closest('#reader-stage-wrap');
   tx=e.touches[0].clientX;
 },{passive:true});
 document.addEventListener('touchend',e=>{
+  if(scrollMode) return;
   if(!tTarget) return;
   const dx=e.changedTouches[0].clientX-tx;
   if(Math.abs(dx)>50){ dx<0?goNext():goPrev(); }
