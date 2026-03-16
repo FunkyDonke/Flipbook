@@ -513,7 +513,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Hind Siliguri',ser
 
 /* panel controls */
 #panel-controls{
-  padding:12px 14px;
+  padding:10px 12px;
   border-bottom:1px solid var(--border);
   display:flex;flex-direction:column;gap:8px;
   flex-shrink:0;
@@ -524,17 +524,21 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Hind Siliguri',ser
   border-radius:8px;border:1px solid var(--border);
   text-align:center;
 }
+/* icon-only button row */
+#panel-btn-row {
+  display:flex;gap:6px;
+}
 .panel-btn{
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;justify-content:center;
   background:rgba(0,0,0,.3);border:1px solid var(--border);
   border-radius:8px;color:var(--gold);
-  padding:7px 10px;cursor:pointer;font-size:12px;
-  transition:all .2s;
-  font-family:'Hind Siliguri',serif;
+  width:36px;height:32px;
+  cursor:pointer;font-size:12px;
+  transition:all .2s;flex-shrink:0;
 }
 .panel-btn:hover{border-color:var(--gold);color:var(--gold2);background:rgba(30,15,5,.6);}
 .panel-btn.active{background:rgba(200,169,110,.1);border-color:var(--gold);color:var(--gold2);}
-.panel-btn svg{width:14px;height:14px;fill:currentColor;flex-shrink:0;}
+.panel-btn svg{width:15px;height:15px;fill:currentColor;}
 
 /* Quality Slider */
 #quality-wrap {
@@ -635,14 +639,46 @@ body.scroll-mode #quality-wrap { opacity:1; pointer-events:all; }
 
 /* Flip */
 #flip-container{position:absolute;top:0;height:100%;pointer-events:none;z-index:20;transform-style:preserve-3d;display:none;}
-#flip-container.flip-fwd{right:0;transform-origin:left center;animation:fFwd .6s cubic-bezier(.645,.045,.355,1) forwards;}
-#flip-container.flip-bwd{left:0;transform-origin:right center;animation:fBwd .6s cubic-bezier(.645,.045,.355,1) forwards;}
+#flip-container.flip-fwd{right:0;transform-origin:left center;animation:fFwd .25s cubic-bezier(.4,0,.2,1) forwards;}
+#flip-container.flip-bwd{left:0;transform-origin:right center;animation:fBwd .25s cubic-bezier(.4,0,.2,1) forwards;}
 @keyframes fFwd{0%{transform:rotateY(0)}100%{transform:rotateY(-180deg)}}
 @keyframes fBwd{0%{transform:rotateY(0)}100%{transform:rotateY(180deg)}}
 .flip-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;background:var(--cream);}
 .flip-face-back{transform:rotateY(180deg);}
 
-.hud-icon-btn{display:none;} /* legacy, kept for JS compat */
+.hud-icon-btn{display:none;}
+
+/* Sidebar hidden state */
+#reader-panel {
+  width:220px;flex-shrink:0;
+  display:flex;flex-direction:column;
+  background:linear-gradient(180deg,#0a0502 0%,#1a0d04 40%,#0a0502 100%);
+  border-right:1px solid var(--border2);
+  z-index:10;position:relative;overflow:hidden;
+  transition:width .2s ease, min-width .2s ease;
+  min-width:220px;
+}
+#reader-panel.hidden {
+  width:0!important;min-width:0!important;
+  border-right:none;overflow:hidden;
+}
+/* Sidebar toggle button — floats on stage edge */
+#btn-sidebar-toggle {
+  position:absolute;top:50%;left:0;
+  transform:translateY(-50%);
+  z-index:30;
+  background:linear-gradient(180deg,#1e1108,#2d1a0e);
+  border:1px solid var(--border2);
+  border-left:none;
+  border-radius:0 6px 6px 0;
+  color:var(--gold);cursor:pointer;
+  width:18px;height:48px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;transition:all .2s;
+  padding:0;
+}
+#btn-sidebar-toggle:hover{color:var(--gold2);background:rgba(200,169,110,.1);}
+#reader-panels { position:relative; }
 
 /* Mobile mode */
 body.mobile-mode #right-page{display:none;}
@@ -974,14 +1010,18 @@ body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
     </div>
     <div id="panel-controls">
       <div id="page-counter">— / —</div>
-      <button class="panel-btn" id="btn-mobile" title="Single / Double page">
-        <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
-        Single Page
-      </button>
-      <button class="panel-btn" id="btn-scroll-mode" title="Scroll Mode — original size">
-        <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
-        Scroll Mode
-      </button>
+      <!-- Icon-only button row -->
+      <div id="panel-btn-row">
+        <button class="panel-btn" id="btn-mobile" title="Single / Double page">
+          <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+        </button>
+        <button class="panel-btn" id="btn-scroll-mode" title="Scroll Mode">
+          <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+        </button>
+        <button class="panel-btn" id="btn-fs" title="Fullscreen">
+          <svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        </button>
+      </div>
       <!-- Quality Slider -->
       <div id="quality-wrap">
         <div id="quality-wrap-label">
@@ -991,10 +1031,6 @@ body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
         <input type="range" id="quality-slider" min="0.5" max="5" step="0.1" value="2"/>
         <div class="quality-range-labels"><span>0.5×</span><span>2.5×</span><span>5×</span></div>
       </div>
-      <button class="panel-btn" id="btn-fs" title="Fullscreen">
-        <svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
-        <span>Fullscreen</span>
-      </button>
     </div>
     <div id="toc-header">
       <span id="toc-header-title">সূচিপত্র</span>
@@ -1012,6 +1048,8 @@ body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
 
   <!-- RIGHT: BOOK STAGE -->
   <div id="reader-stage-wrap">
+    <!-- Sidebar toggle button -->
+    <button id="btn-sidebar-toggle" title="সাইডবার দেখান/লুকান">›</button>
     <!-- FLIP MODE -->
     <div id="stage">
       <div id="book">
@@ -3303,15 +3341,16 @@ function maxSpread(){ return mobileMode?totalPages-1:Math.ceil(totalPages/2)-1; 
 async function renderSpread(s){
   const{L,R}=s2p(s);
   if(mobileMode){
-    await renderPage(L,$('cvL'));
+    await renderPageCached(L,$('cvL'));
     $('numL').textContent=L;
     $('page-counter').textContent=L+' / '+totalPages;
   } else {
-    await Promise.all([renderPage(L,$('cvL')),renderPage(R,$('cvR'))]);
+    await Promise.all([renderPageCached(L,$('cvL')),renderPageCached(R,$('cvR'))]);
     $('numL').textContent=L<=totalPages?L:'';
     $('numR').textContent=R<=totalPages?R:'';
     $('page-counter').textContent=L+'–'+Math.min(R,totalPages)+' / '+totalPages;
   }
+  _schedulePrerender(s);
 }
 
 
@@ -3332,63 +3371,151 @@ function updateNav(){
   syncTOCHighlight();
 }
 
-// FLIP
-async function flipTo(next,dir){
-  if(isAnimating) return; isAnimating=true;
-  const fc=$('flip-container');
-  const{L:cL,R:cR}=s2p(currentSpread), {L:nL,R:nR}=s2p(next);
+// ── Pre-render cache — keeps adjacent pages ready ──
+const _pageCache = new Map(); // key: pageNum → ImageBitmap or canvas
 
-  if(mobileMode){
-    $('left-page').style.transition='opacity .3s';
-    $('left-page').style.opacity='0';
-    await new Promise(r=>setTimeout(r,300));
-    currentSpread=next; await renderSpread(currentSpread);
-    $('left-page').style.opacity='1';
-    setTimeout(()=>{$('left-page').style.transition='';},300);
-  } else {
-    const off=document.createElement('canvas');
-    if(dir==='fwd'){
-      await Promise.all([renderPage(cR,$('cvFF')),renderPage(nL,$('cvFB')),renderPage(nR,off)]);
-      fc.style.left='auto'; fc.style.right='0';
-      const ctx=$('cvR').getContext('2d');
-      $('cvR').width=off.width; $('cvR').height=off.height;
-      $('cvR').style.width=pageW+'px'; $('cvR').style.height=pageH+'px';
-      ctx.drawImage(off,0,0);
-      $('numR').textContent=nR<=totalPages?nR:'';
-    } else {
-      await Promise.all([renderPage(cL,$('cvFF')),renderPage(nR,$('cvFB')),renderPage(nL,off)]);
-      fc.style.right='auto'; fc.style.left='0';
-      const ctx=$('cvL').getContext('2d');
-      $('cvL').width=off.width; $('cvL').height=off.height;
-      $('cvL').style.width=pageW+'px'; $('cvL').style.height=pageH+'px';
-      ctx.drawImage(off,0,0);
-      $('numL').textContent=nL<=totalPages?nL:'';
-    }
-    fc.style.display='block'; fc.className=dir==='fwd'?'flip-fwd':'flip-bwd';
-    await new Promise(r=>setTimeout(r,650));
-    if(dir==='fwd'){
-      const ctx=$('cvL').getContext('2d');
-      $('cvL').width=$('cvFB').width; $('cvL').height=$('cvFB').height;
-      $('cvL').style.width=pageW+'px'; $('cvL').style.height=pageH+'px';
-      ctx.drawImage($('cvFB'),0,0);
-      $('numL').textContent=nL<=totalPages?nL:'';
-    } else {
-      const ctx=$('cvR').getContext('2d');
-      $('cvR').width=$('cvFB').width; $('cvR').height=$('cvFB').height;
-      $('cvR').style.width=pageW+'px'; $('cvR').style.height=pageH+'px';
-      ctx.drawImage($('cvFB'),0,0);
-      $('numR').textContent=nR<=totalPages?nR:'';
-    }
-    currentSpread=next;
-    const{L,R}=s2p(next);
-    $('page-counter').textContent=L+'–'+Math.min(R,totalPages)+' / '+totalPages;
-    fc.style.display='none'; fc.className='';
-  }
-  updateNav();  isAnimating=false;
+async function prerenderPage(num) {
+  if (num < 1 || num > totalPages) return;
+  if (_pageCache.has(num)) return; // already cached
+  const offscreen = document.createElement('canvas');
+  await renderPage(num, offscreen);
+  _pageCache.set(num, offscreen);
 }
 
-async function goNext(){ if(isAnimating||currentSpread>=maxSpread()) return; await flipTo(currentSpread+1,'fwd'); }
-async function goPrev(){ if(isAnimating||currentSpread<=0) return; await flipTo(currentSpread-1,'bwd'); }
+function _clearPageCache() { _pageCache.clear(); }
+
+// Prerender adjacent pages in background
+function _schedulePrerender(spreadIdx) {
+  const spreads = mobileMode
+    ? [spreadIdx - 1, spreadIdx + 1, spreadIdx - 2, spreadIdx + 2]
+    : [spreadIdx - 1, spreadIdx + 1, spreadIdx - 2, spreadIdx + 2];
+
+  spreads.forEach(s => {
+    if (s < 0 || s > maxSpread()) return;
+    const { L, R } = s2p(s);
+    setTimeout(() => { prerenderPage(L); if (!mobileMode) prerenderPage(R); }, 50);
+  });
+}
+
+// Render a page — use cache if available
+async function renderPageCached(num, canvas) {
+  if (num < 1 || num > totalPages) {
+    await renderPage(num, canvas); return;
+  }
+  const cached = _pageCache.get(num);
+  if (cached && cached.width > 1) {
+    // Copy from cached canvas
+    canvas.width  = cached.width;
+    canvas.height = cached.height;
+    canvas.style.width  = pageW + 'px';
+    canvas.style.height = pageH + 'px';
+    canvas.getContext('2d').drawImage(cached, 0, 0);
+    return;
+  }
+  await renderPage(num, canvas);
+  // Store in cache
+  const store = document.createElement('canvas');
+  store.width  = canvas.width;
+  store.height = canvas.height;
+  store.getContext('2d').drawImage(canvas, 0, 0);
+  _pageCache.set(num, store);
+}
+
+// FLIP — fast, uses cache
+async function flipTo(next, dir) {
+  if (isAnimating) return; isAnimating = true;
+  const fc = $('flip-container');
+  const { L:cL, R:cR } = s2p(currentSpread);
+  const { L:nL, R:nR } = s2p(next);
+
+  if (mobileMode) {
+    $('left-page').style.transition = 'opacity .15s';
+    $('left-page').style.opacity = '0';
+    await new Promise(r => setTimeout(r, 150));
+    currentSpread = next;
+    await renderPageCached(nL, $('cvL'));
+    $('numL').textContent = nL;
+    $('page-counter').textContent = nL + ' / ' + totalPages;
+    $('left-page').style.opacity = '1';
+    setTimeout(() => { $('left-page').style.transition = ''; }, 150);
+  } else {
+    const off = document.createElement('canvas');
+    if (dir === 'fwd') {
+      await Promise.all([
+        renderPageCached(cR, $('cvFF')),
+        renderPageCached(nL, $('cvFB')),
+        renderPageCached(nR, off)
+      ]);
+      fc.style.left = 'auto'; fc.style.right = '0';
+      const ctx = $('cvR').getContext('2d');
+      $('cvR').width = off.width; $('cvR').height = off.height;
+      $('cvR').style.width = pageW + 'px'; $('cvR').style.height = pageH + 'px';
+      ctx.drawImage(off, 0, 0);
+      $('numR').textContent = nR <= totalPages ? nR : '';
+    } else {
+      await Promise.all([
+        renderPageCached(cL, $('cvFF')),
+        renderPageCached(nR, $('cvFB')),
+        renderPageCached(nL, off)
+      ]);
+      fc.style.right = 'auto'; fc.style.left = '0';
+      const ctx = $('cvL').getContext('2d');
+      $('cvL').width = off.width; $('cvL').height = off.height;
+      $('cvL').style.width = pageW + 'px'; $('cvL').style.height = pageH + 'px';
+      ctx.drawImage(off, 0, 0);
+      $('numL').textContent = nL <= totalPages ? nL : '';
+    }
+
+    fc.style.display = 'block';
+    fc.className = dir === 'fwd' ? 'flip-fwd' : 'flip-bwd';
+    await new Promise(r => setTimeout(r, 260)); // matches .25s animation + small buffer
+
+    if (dir === 'fwd') {
+      const ctx = $('cvL').getContext('2d');
+      $('cvL').width = $('cvFB').width; $('cvL').height = $('cvFB').height;
+      $('cvL').style.width = pageW + 'px'; $('cvL').style.height = pageH + 'px';
+      ctx.drawImage($('cvFB'), 0, 0);
+      $('numL').textContent = nL <= totalPages ? nL : '';
+    } else {
+      const ctx = $('cvR').getContext('2d');
+      $('cvR').width = $('cvFB').width; $('cvR').height = $('cvFB').height;
+      $('cvR').style.width = pageW + 'px'; $('cvR').style.height = pageH + 'px';
+      ctx.drawImage($('cvFB'), 0, 0);
+      $('numR').textContent = nR <= totalPages ? nR : '';
+    }
+    currentSpread = next;
+    const { L, R } = s2p(next);
+    $('page-counter').textContent = L + '–' + Math.min(R, totalPages) + ' / ' + totalPages;
+    fc.style.display = 'none'; fc.className = '';
+  }
+
+  updateNav();
+  isAnimating = false;
+  // Prerender adjacent pages in background
+  _schedulePrerender(currentSpread);
+}
+
+async function goNext() { if (isAnimating || currentSpread >= maxSpread()) return; await flipTo(currentSpread + 1, 'fwd'); }
+async function goPrev() { if (isAnimating || currentSpread <= 0) return; await flipTo(currentSpread - 1, 'bwd'); }
+
+// ── Sidebar toggle ──
+let _sidebarHidden = false;
+$('btn-sidebar-toggle').addEventListener('click', () => {
+  _sidebarHidden = !_sidebarHidden;
+  const panel = $('reader-panel');
+  const btn   = $('btn-sidebar-toggle');
+  panel.classList.toggle('hidden', _sidebarHidden);
+  btn.textContent = _sidebarHidden ? '‹' : '›';
+  // Recalibrate page size after sidebar resize
+  if (currentBook && totalPages > 0) {
+    setTimeout(async () => {
+      _clearPageCache();
+      await calibrateSize(); sizeBook();
+      await renderSpread(currentSpread);
+      _schedulePrerender(currentSpread);
+    }, 220);
+  }
+});
 
 // nav arrows removed — use scroll/swipe/keyboard
 
@@ -3470,6 +3597,7 @@ $('btn-back').addEventListener('click',()=>{
   document.title='📚 Digital Library';
   document.body.style.filter='';
   renderTOC([]);
+  _clearPageCache();
   // reset scroll mode
   if (scrollMode) {
     scrollMode = false;
