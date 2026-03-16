@@ -664,15 +664,14 @@ body.scroll-mode #quality-wrap { opacity:1; pointer-events:all; }
 }
 /* Sidebar toggle button — floats on stage edge */
 #btn-sidebar-toggle {
-  position:absolute;top:50%;left:0;
-  transform:translateY(-50%);
+  position:absolute;top:12px;left:0;
   z-index:30;
   background:linear-gradient(180deg,#1e1108,#2d1a0e);
   border:1px solid var(--border2);
   border-left:none;
   border-radius:0 6px 6px 0;
   color:var(--gold);cursor:pointer;
-  width:18px;height:48px;
+  width:18px;height:36px;
   display:flex;align-items:center;justify-content:center;
   font-size:11px;transition:all .2s;
   padding:0;
@@ -1012,15 +1011,9 @@ body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
       <div id="page-counter">— / —</div>
       <!-- Icon-only button row -->
       <div id="panel-btn-row">
-        <button class="panel-btn" id="btn-mobile" title="Single / Double page">
-          <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
-        </button>
-        <button class="panel-btn" id="btn-scroll-mode" title="Scroll Mode">
-          <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
-        </button>
-        <button class="panel-btn" id="btn-fs" title="Fullscreen">
-          <svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
-        </button>
+        <button class="panel-btn" id="btn-mobile" title="Single / Double page"><svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg></button>
+        <button class="panel-btn" id="btn-scroll-mode" title="Scroll Mode"><svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg></button>
+        <button class="panel-btn" id="btn-fs" title="Fullscreen"><svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
       </div>
       <!-- Quality Slider -->
       <div id="quality-wrap">
@@ -2930,7 +2923,8 @@ async function openBook(book){
       }
 
       await renderSpread(currentSpread); updateNav();
-      isAnimating = false; // ensure not stuck
+      isAnimating = false;
+      if (mobileMode) _startRollingPrerender(currentSpread); // ensure not stuck
 
       setProgress(100, 'Done!');
       const _resumePage = savedPage; // capture for closure
@@ -3429,15 +3423,11 @@ async function flipTo(next, dir) {
   const { L:nL, R:nR } = s2p(next);
 
   if (mobileMode) {
-    $('left-page').style.transition = 'opacity .15s';
-    $('left-page').style.opacity = '0';
-    await new Promise(r => setTimeout(r, 150));
+    // Instant page change — no animation delay for single page mode
     currentSpread = next;
     await renderPageCached(nL, $('cvL'));
     $('numL').textContent = nL;
     $('page-counter').textContent = nL + ' / ' + totalPages;
-    $('left-page').style.opacity = '1';
-    setTimeout(() => { $('left-page').style.transition = ''; }, 150);
   } else {
     const off = document.createElement('canvas');
     if (dir === 'fwd') {
@@ -3493,6 +3483,8 @@ async function flipTo(next, dir) {
   isAnimating = false;
   // Prerender adjacent pages in background
   _schedulePrerender(currentSpread);
+  // Rolling prerender for single-page mode
+  _onPageAdvance(currentSpread);
 }
 
 async function goNext() { if (isAnimating || currentSpread >= maxSpread()) return; await flipTo(currentSpread + 1, 'fwd'); }
@@ -3500,22 +3492,6 @@ async function goPrev() { if (isAnimating || currentSpread <= 0) return; await f
 
 // ── Sidebar toggle ──
 let _sidebarHidden = false;
-$('btn-sidebar-toggle').addEventListener('click', () => {
-  _sidebarHidden = !_sidebarHidden;
-  const panel = $('reader-panel');
-  const btn   = $('btn-sidebar-toggle');
-  panel.classList.toggle('hidden', _sidebarHidden);
-  btn.textContent = _sidebarHidden ? '‹' : '›';
-  // Recalibrate page size after sidebar resize
-  if (currentBook && totalPages > 0) {
-    setTimeout(async () => {
-      _clearPageCache();
-      await calibrateSize(); sizeBook();
-      await renderSpread(currentSpread);
-      _schedulePrerender(currentSpread);
-    }, 220);
-  }
-});
 
 // nav arrows removed — use scroll/swipe/keyboard
 
@@ -3549,15 +3525,59 @@ function enableMobile(on){
   document.body.classList.toggle('mobile-mode',on);
   $('btn-mobile').classList.toggle('active',on);
 }
+
 $('btn-mobile').addEventListener('click',async()=>{
   if(!currentBook) return;
   const wasPage=s2p(currentSpread).L;
   enableMobile(!mobileMode);
+  _clearPageCache();
   currentSpread=mobileMode?wasPage-1:Math.floor((wasPage-1)/2);
-  await calibrateSize(); sizeBook(); await renderSpread(currentSpread); updateNav();
-  // update button label
-  $('btn-mobile').childNodes[2] && ($('btn-mobile').childNodes[2].textContent = mobileMode ? ' Single Page' : ' Single Page');
+  await calibrateSize(); sizeBook();
+  await renderSpread(currentSpread); updateNav();
+  if(mobileMode) _startRollingPrerender(currentSpread);
 });
+
+// ── Sidebar toggle — simple hide/show, no recalibrate ──
+$('btn-sidebar-toggle').addEventListener('click', () => {
+  _sidebarHidden = !_sidebarHidden;
+  $('reader-panel').classList.toggle('hidden', _sidebarHidden);
+  $('btn-sidebar-toggle').textContent = _sidebarHidden ? '‹' : '›';
+});
+
+// ── Rolling prerender for single-page mode ──
+// When user moves forward, prerender the next unrendered page
+let _preRenderBound = 0; // highest page number already queued for prerender
+
+function _startRollingPrerender(fromSpread) {
+  _preRenderBound = s2p(fromSpread).L;
+  _rollPrerender(fromSpread);
+}
+
+function _rollPrerender(fromSpread) {
+  // Prerender next 10 pages ahead of current position
+  const currentPage = s2p(fromSpread).L;
+  const limit = Math.min(totalPages, currentPage + 10);
+  for (let p = currentPage + 1; p <= limit; p++) {
+    if (!_pageCache.has(p)) {
+      setTimeout(() => prerenderPage(p), (p - currentPage) * 80);
+    }
+  }
+}
+
+// Called after each page flip — extend prerender window if needed
+function _onPageAdvance(newSpread) {
+  if (!mobileMode) return;
+  const currentPage = s2p(newSpread).L;
+  // If user moved forward past prerender bound, extend by 5 more pages
+  if (currentPage >= _preRenderBound - 3) {
+    _preRenderBound = Math.min(totalPages, currentPage + 10);
+    for (let p = currentPage + 1; p <= _preRenderBound; p++) {
+      if (!_pageCache.has(p)) {
+        setTimeout(() => prerenderPage(p), (p - currentPage) * 80);
+      }
+    }
+  }
+}
 
 // Fullscreen
 $('btn-fs').addEventListener('click',()=>{
