@@ -986,10 +986,10 @@ body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
       <div id="quality-wrap">
         <div id="quality-wrap-label">
           <span>🖼 Render Quality</span>
-          <input type="number" id="quality-num-input" min="0.5" max="10" step="0.1" value="2" title="সরাসরি value টাইপ করুন"/>
+          <input type="number" id="quality-num-input" min="0.5" max="5" step="0.1" value="2" title="সরাসরি value টাইপ করুন"/>
         </div>
-        <input type="range" id="quality-slider" min="0.5" max="10" step="0.1" value="2"/>
-        <div class="quality-range-labels"><span>0.5×</span><span>5×</span><span>10×</span></div>
+        <input type="range" id="quality-slider" min="0.5" max="5" step="0.1" value="2"/>
+        <div class="quality-range-labels"><span>0.5×</span><span>2.5×</span><span>5×</span></div>
       </div>
       <button class="panel-btn" id="btn-fs" title="Fullscreen">
         <svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
@@ -2948,7 +2948,7 @@ function initQualitySlider() {
 
   function applyQuality(val) {
     // clamp between 0.5 and 10, round to 1 decimal
-    val = Math.round(Math.max(0.5, Math.min(10, val)) * 10) / 10;
+    val = Math.round(Math.max(0.5, Math.min(5, val)) * 10) / 10;
     renderQuality  = val;
     slider.value   = val;
     numInput.value = val;
@@ -2960,8 +2960,14 @@ function initQualitySlider() {
     _qualityTimer = setTimeout(async () => {
       if (!currentBook || totalPages === 0) return;
       if (scrollMode) {
-        // re-render scroll mode with new quality
-        await renderScrollMode();
+        // Reset all rendered pages → observer will re-render visible ones
+        _vsRenderQueue = [];
+        $('scroll-pages').querySelectorAll('.scroll-page-wrap').forEach(w => {
+          const canvas = w.querySelector('canvas');
+          if (canvas) { disposeCanvas(canvas); canvas.remove(); }
+          w.dataset.rendered = '0';
+        });
+        _processRenderQueue();
       } else {
         await renderSpread(currentSpread);
       }
@@ -3053,47 +3059,164 @@ let scrollMode = false;
 let _scrollRendering = false;
 let _scrollAbort = null;
 
+// ── Virtual Scroll state ──
+let _vsObserver    = null; // IntersectionObserver
+let _vsRenderQueue = [];   // pending render tasks
+let _vsRendering   = false;
+
+// Dispose a canvas to free RAM
+function disposeCanvas(canvas) {
+  if (!canvas) return;
+  canvas.width  = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext('2d');
+  if (ctx) ctx.clearRect(0, 0, 1, 1);
+}
+
+// How many pages to pre-render ahead/behind visible area
+const VS_PRELOAD = 2;
+
 async function renderScrollMode() {
   if (_scrollRendering) {
     _scrollAbort = true;
     await new Promise(r => setTimeout(r, 100));
   }
-  _scrollAbort = false;
+  _scrollAbort  = false;
   _scrollRendering = true;
+
+  // Disconnect old observer
+  if (_vsObserver) { _vsObserver.disconnect(); _vsObserver = null; }
+  _vsRenderQueue = [];
 
   const container = $('scroll-pages');
   container.innerHTML = '';
 
   const wrap  = $('reader-stage-wrap');
   const dpr   = window.devicePixelRatio || 1;
-
-  // Available width inside the stage area, minus padding
   const availW = (wrap ? wrap.clientWidth : window.innerWidth) - 32;
+
+  // ── Step 1: Build placeholder wrappers for ALL pages (no canvas yet) ──
+  const pageWraps = [];
 
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
     if (_scrollAbort) break;
 
     const { doc, localPage } = getDocAndPage(pageNum);
-    const pg  = await doc.getPage(localPage);
-    const vp0 = pg.getViewport({ scale: 1 });
+    const pg   = await doc.getPage(localPage);
+    const vp0  = pg.getViewport({ scale: 1 });
 
-    // CSS display scale: fit page width into available area
-    // Never go larger than 1:1 screen pixel ratio to avoid blurry upscale
     const fitScale = availW / vp0.width;
-    const cssScale = Math.min(fitScale, 96/72); // cap at 96dpi (1:1 screen)
-
+    const cssScale = Math.min(fitScale, 96 / 72);
     const cssW = Math.round(vp0.width  * cssScale);
     const cssH = Math.round(vp0.height * cssScale);
 
-    // Render at cssScale × max(dpr,2) for sharp text
-    const renderScale = cssScale * Math.max(dpr, renderQuality);
-    const vp = pg.getViewport({ scale: renderScale });
-
-    // Build page wrapper
     const pageWrap = document.createElement('div');
     pageWrap.className = 'scroll-page-wrap';
     pageWrap.style.width  = cssW + 'px';
     pageWrap.style.height = cssH + 'px';
+    pageWrap.dataset.page     = pageNum;
+    pageWrap.dataset.cssW     = cssW;
+    pageWrap.dataset.cssH     = cssH;
+    pageWrap.dataset.cssScale = cssScale;
+    pageWrap.dataset.rendered = '0';
+
+    // Placeholder background (shows while not rendered)
+    pageWrap.style.background = 'var(--cream2)';
+
+    const pnum = document.createElement('div');
+    pnum.className   = 'scroll-pnum';
+    pnum.textContent = pageNum;
+    pageWrap.appendChild(pnum);
+
+    container.appendChild(pageWrap);
+    pageWraps.push(pageWrap);
+  }
+
+  _scrollRendering = false;
+
+  // ── Step 2: IntersectionObserver — render visible + preload buffer ──
+  const scrollView = $('scroll-view');
+
+  _vsObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const wrap = entry.target;
+      const pageNum = parseInt(wrap.dataset.page);
+
+      if (entry.isIntersecting) {
+        // Render this page and VS_PRELOAD pages around it
+        for (let p = Math.max(1, pageNum - VS_PRELOAD);
+                 p <= Math.min(totalPages, pageNum + VS_PRELOAD); p++) {
+          const w = pageWraps[p - 1];
+          if (w && w.dataset.rendered === '0') {
+            w.dataset.rendered = 'queued';
+            _enqueueRender(w, p);
+          }
+        }
+      } else {
+        // Far from viewport — dispose canvas to free RAM
+        // Keep a buffer: only dispose if far enough away
+        const viewRect = scrollView.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        const dist = Math.min(
+          Math.abs(wrapRect.bottom - viewRect.top),
+          Math.abs(wrapRect.top    - viewRect.bottom)
+        );
+        // Dispose if more than 3 pages away from viewport
+        if (dist > wrap.offsetHeight * 3) {
+          const canvas = wrap.querySelector('canvas');
+          if (canvas) {
+            disposeCanvas(canvas);
+            canvas.remove();
+            wrap.dataset.rendered = '0';
+          }
+        }
+      }
+    });
+    _processRenderQueue();
+  }, {
+    root: scrollView,
+    rootMargin: '200% 0px', // preload 2 screen-heights ahead
+    threshold: 0
+  });
+
+  pageWraps.forEach(w => _vsObserver.observe(w));
+}
+
+// ── Render queue processor — renders one page at a time to avoid RAM spike ──
+async function _enqueueRender(pageWrap, pageNum) {
+  _vsRenderQueue.push({ pageWrap, pageNum });
+}
+
+async function _processRenderQueue() {
+  if (_vsRendering) return;
+  _vsRendering = true;
+
+  while (_vsRenderQueue.length > 0) {
+    const { pageWrap, pageNum } = _vsRenderQueue.shift();
+    if (!pageWrap || pageWrap.dataset.rendered === '1') continue;
+    if (!document.body.classList.contains('scroll-mode')) break;
+
+    await _renderScrollPage(pageWrap, pageNum);
+  }
+
+  _vsRendering = false;
+}
+
+async function _renderScrollPage(pageWrap, pageNum) {
+  try {
+    const { doc, localPage } = getDocAndPage(pageNum);
+    const pg   = await doc.getPage(localPage);
+    const dpr  = window.devicePixelRatio || 1;
+
+    const cssW    = parseInt(pageWrap.dataset.cssW);
+    const cssH    = parseInt(pageWrap.dataset.cssH);
+    const cssScale = parseFloat(pageWrap.dataset.cssScale);
+    const renderScale = cssScale * Math.max(dpr, renderQuality);
+    const vp = pg.getViewport({ scale: renderScale });
+
+    // Remove existing canvas if re-rendering
+    const old = pageWrap.querySelector('canvas');
+    if (old) { disposeCanvas(old); old.remove(); }
 
     const canvas = document.createElement('canvas');
     canvas.width  = Math.round(vp.width);
@@ -3101,20 +3224,19 @@ async function renderScrollMode() {
     canvas.style.width  = cssW + 'px';
     canvas.style.height = cssH + 'px';
 
-    const pnum = document.createElement('div');
-    pnum.className  = 'scroll-pnum';
-    pnum.textContent = pageNum;
+    // Insert before pnum
+    const pnum = pageWrap.querySelector('.scroll-pnum');
+    pageWrap.insertBefore(canvas, pnum);
 
-    pageWrap.appendChild(canvas);
-    pageWrap.appendChild(pnum);
-    container.appendChild(pageWrap);
-
-    // Render
     const ctx = canvas.getContext('2d');
     await pg.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
-  }
 
-  _scrollRendering = false;
+    pageWrap.dataset.rendered = '1';
+    pageWrap.style.background = 'var(--cream)';
+  } catch(e) {
+    console.warn(`Page ${pageNum} render failed:`, e);
+    pageWrap.dataset.rendered = '0';
+  }
 }
 
 function enableScrollMode(on) {
@@ -3123,13 +3245,18 @@ function enableScrollMode(on) {
   $('btn-scroll-mode').classList.toggle('active', on);
 
   if (on) {
-    // Switch to scroll mode
     renderScrollMode();
-    // Update page counter via scroll position
     $('scroll-view').onscroll = syncScrollPageCounter;
   } else {
-    // Back to flip mode — re-render current spread
-    _scrollAbort = true;
+    // disconnect observer and dispose all scroll canvases
+    if (_vsObserver) { _vsObserver.disconnect(); _vsObserver = null; }
+    _vsRenderQueue = [];
+    _vsRendering   = false;
+    _scrollAbort   = true;
+    // dispose all canvases in scroll-pages
+    $('scroll-pages').querySelectorAll('canvas').forEach(disposeCanvas);
+    $('scroll-pages').innerHTML = '';
+    // back to flip mode
     renderSpread(currentSpread);
   }
 }
@@ -3339,8 +3466,12 @@ $('btn-back').addEventListener('click',()=>{
   if (scrollMode) {
     scrollMode = false;
     _scrollAbort = true;
+    if (_vsObserver) { _vsObserver.disconnect(); _vsObserver = null; }
+    _vsRenderQueue = [];
+    _vsRendering   = false;
     document.body.classList.remove('scroll-mode');
     $('btn-scroll-mode').classList.remove('active');
+    $('scroll-pages').querySelectorAll('canvas').forEach(disposeCanvas);
     $('scroll-pages').innerHTML = '';
   }
 });
