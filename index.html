@@ -3542,11 +3542,17 @@ $('btn-sidebar-toggle').addEventListener('click', () => {
   _sidebarHidden = !_sidebarHidden;
   $('reader-panel').classList.toggle('hidden', _sidebarHidden);
   $('btn-sidebar-toggle').textContent = _sidebarHidden ? '‹' : '›';
-  // Recalibrate page size after sidebar resize (no cache clear)
   if (currentBook && totalPages > 0) {
     setTimeout(async () => {
-      await calibrateSize(); sizeBook();
-      await renderSpread(currentSpread);
+      if (scrollMode) {
+        // Scroll mode: rebuild placeholders with new width, re-trigger virtual scroll
+        await renderScrollMode();
+        _vsUpdateWindow();
+      } else {
+        // Flip mode: recalibrate page size
+        await calibrateSize(); sizeBook();
+        await renderSpread(currentSpread);
+      }
     }, 220);
   }
 });
