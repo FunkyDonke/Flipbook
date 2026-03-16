@@ -3544,12 +3544,11 @@ $('btn-sidebar-toggle').addEventListener('click', () => {
   $('btn-sidebar-toggle').textContent = _sidebarHidden ? '‹' : '›';
   if (currentBook && totalPages > 0) {
     setTimeout(async () => {
+      _clearPageCache(); // clear old size cache
       if (scrollMode) {
-        // Scroll mode: rebuild placeholders with new width, re-trigger virtual scroll
         await renderScrollMode();
         _vsUpdateWindow();
       } else {
-        // Flip mode: recalibrate page size
         await calibrateSize(); sizeBook();
         await renderSpread(currentSpread);
       }
