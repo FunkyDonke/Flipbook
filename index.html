@@ -3397,8 +3397,8 @@ async function renderPageCached(num, canvas) {
     await renderPage(num, canvas); return;
   }
   const cached = _pageCache.get(num);
-  if (cached && cached.width > 1) {
-    // Copy from cached canvas
+  // Cache hit — but check if it was rendered at the same pageW (size may have changed)
+  if (cached && cached.width > 1 && cached._pageW === pageW) {
     canvas.width  = cached.width;
     canvas.height = cached.height;
     canvas.style.width  = pageW + 'px';
@@ -3406,11 +3406,12 @@ async function renderPageCached(num, canvas) {
     canvas.getContext('2d').drawImage(cached, 0, 0);
     return;
   }
+  // Cache miss or stale — render fresh
   await renderPage(num, canvas);
-  // Store in cache
   const store = document.createElement('canvas');
   store.width  = canvas.width;
   store.height = canvas.height;
+  store._pageW = pageW; // tag with current display width
   store.getContext('2d').drawImage(canvas, 0, 0);
   _pageCache.set(num, store);
 }
@@ -3544,12 +3545,16 @@ $('btn-sidebar-toggle').addEventListener('click', () => {
   $('btn-sidebar-toggle').textContent = _sidebarHidden ? '‹' : '›';
   if (currentBook && totalPages > 0) {
     setTimeout(async () => {
-      _clearPageCache(); // clear old size cache
       if (scrollMode) {
+        _clearPageCache();
         await renderScrollMode();
         _vsUpdateWindow();
       } else {
+        // 1. calibrate new size FIRST
         await calibrateSize(); sizeBook();
+        // 2. THEN clear old-size cache
+        _clearPageCache();
+        // 3. render fresh with new size
         await renderSpread(currentSpread);
       }
     }, 220);
