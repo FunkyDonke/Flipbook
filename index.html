@@ -2960,14 +2960,15 @@ function initQualitySlider() {
     _qualityTimer = setTimeout(async () => {
       if (!currentBook || totalPages === 0) return;
       if (scrollMode) {
-        // Reset all rendered pages → observer will re-render visible ones
+        // Reset rendered state → scroll event will re-render visible pages
         _vsRenderQueue = [];
-        $('scroll-pages').querySelectorAll('.scroll-page-wrap').forEach(w => {
+        _vsPageWraps.forEach(w => {
           const canvas = w.querySelector('canvas');
           if (canvas) { disposeCanvas(canvas); canvas.remove(); }
           w.dataset.rendered = '0';
+          w.style.background = '#e8e0d0';
         });
-        _processRenderQueue();
+        _vsUpdateWindow();
       } else {
         await renderSpread(currentSpread);
       }
@@ -3060,50 +3061,45 @@ let _scrollRendering = false;
 let _scrollAbort = null;
 
 // ── Virtual Scroll state ──
-let _vsObserver    = null; // IntersectionObserver
-let _vsRenderQueue = [];   // pending render tasks
+let _vsRenderQueue = [];
 let _vsRendering   = false;
+let _vsPageWraps   = []; // all page wrapper refs
+let _vsScrollTimer = null;
+
+// Pages to keep rendered: VS_KEEP on each side of visible
+const VS_KEEP    = 3; // render buffer
+const VS_DISPOSE = 6; // dispose beyond this distance
 
 // Dispose a canvas to free RAM
 function disposeCanvas(canvas) {
   if (!canvas) return;
   canvas.width  = 1;
   canvas.height = 1;
-  const ctx = canvas.getContext('2d');
-  if (ctx) ctx.clearRect(0, 0, 1, 1);
 }
-
-// How many pages to pre-render ahead/behind visible area
-const VS_PRELOAD = 2;
 
 async function renderScrollMode() {
   if (_scrollRendering) {
     _scrollAbort = true;
     await new Promise(r => setTimeout(r, 100));
   }
-  _scrollAbort  = false;
+  _scrollAbort     = false;
   _scrollRendering = true;
-
-  // Disconnect old observer
-  if (_vsObserver) { _vsObserver.disconnect(); _vsObserver = null; }
-  _vsRenderQueue = [];
+  _vsRenderQueue   = [];
+  _vsPageWraps     = [];
 
   const container = $('scroll-pages');
   container.innerHTML = '';
 
-  const wrap  = $('reader-stage-wrap');
-  const dpr   = window.devicePixelRatio || 1;
+  const wrap   = $('reader-stage-wrap');
   const availW = (wrap ? wrap.clientWidth : window.innerWidth) - 32;
 
-  // ── Step 1: Build placeholder wrappers for ALL pages (no canvas yet) ──
-  const pageWraps = [];
-
+  // Build ALL placeholders first (fast — no PDF rendering yet)
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
     if (_scrollAbort) break;
 
     const { doc, localPage } = getDocAndPage(pageNum);
-    const pg   = await doc.getPage(localPage);
-    const vp0  = pg.getViewport({ scale: 1 });
+    const pg  = await doc.getPage(localPage);
+    const vp0 = pg.getViewport({ scale: 1 });
 
     const fitScale = availW / vp0.width;
     const cssScale = Math.min(fitScale, 96 / 72);
@@ -3119,9 +3115,7 @@ async function renderScrollMode() {
     pageWrap.dataset.cssH     = cssH;
     pageWrap.dataset.cssScale = cssScale;
     pageWrap.dataset.rendered = '0';
-
-    // Placeholder background (shows while not rendered)
-    pageWrap.style.background = 'var(--cream2)';
+    pageWrap.style.background = '#e8e0d0';
 
     const pnum = document.createElement('div');
     pnum.className   = 'scroll-pnum';
@@ -3129,92 +3123,97 @@ async function renderScrollMode() {
     pageWrap.appendChild(pnum);
 
     container.appendChild(pageWrap);
-    pageWraps.push(pageWrap);
+    _vsPageWraps.push(pageWrap);
   }
 
   _scrollRendering = false;
 
-  // ── Step 2: IntersectionObserver — render visible + preload buffer ──
+  // Initial render of visible pages
+  _vsUpdateWindow();
+}
+
+// Called on scroll — figure out which pages are visible and manage render/dispose
+function _vsUpdateWindow() {
+  if (!scrollMode || _vsPageWraps.length === 0) return;
+
   const scrollView = $('scroll-view');
+  if (!scrollView) return;
 
-  _vsObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      const wrap = entry.target;
-      const pageNum = parseInt(wrap.dataset.page);
+  const viewTop    = scrollView.scrollTop;
+  const viewBottom = viewTop + scrollView.clientHeight;
 
-      if (entry.isIntersecting) {
-        // Render this page and VS_PRELOAD pages around it
-        for (let p = Math.max(1, pageNum - VS_PRELOAD);
-                 p <= Math.min(totalPages, pageNum + VS_PRELOAD); p++) {
-          const w = pageWraps[p - 1];
-          if (w && w.dataset.rendered === '0') {
-            w.dataset.rendered = 'queued';
-            _enqueueRender(w, p);
-          }
-        }
-      } else {
-        // Far from viewport — dispose canvas to free RAM
-        // Keep a buffer: only dispose if far enough away
-        const viewRect = scrollView.getBoundingClientRect();
-        const wrapRect = wrap.getBoundingClientRect();
-        const dist = Math.min(
-          Math.abs(wrapRect.bottom - viewRect.top),
-          Math.abs(wrapRect.top    - viewRect.bottom)
-        );
-        // Dispose if more than 3 pages away from viewport
-        if (dist > wrap.offsetHeight * 3) {
-          const canvas = wrap.querySelector('canvas');
-          if (canvas) {
-            disposeCanvas(canvas);
-            canvas.remove();
-            wrap.dataset.rendered = '0';
-          }
-        }
-      }
-    });
-    _processRenderQueue();
-  }, {
-    root: scrollView,
-    rootMargin: '200% 0px', // preload 2 screen-heights ahead
-    threshold: 0
+  // Find visible page range by checking each wrapper's offsetTop
+  let firstVisible = -1, lastVisible = -1;
+  _vsPageWraps.forEach((w, i) => {
+    const top    = w.offsetTop;
+    const bottom = top + w.offsetHeight;
+    if (bottom >= viewTop && top <= viewBottom) {
+      if (firstVisible < 0) firstVisible = i;
+      lastVisible = i;
+    }
   });
 
-  pageWraps.forEach(w => _vsObserver.observe(w));
+  if (firstVisible < 0) return; // nothing visible yet
+
+  // Render window: visible ± VS_KEEP
+  const renderFrom = Math.max(0, firstVisible - VS_KEEP);
+  const renderTo   = Math.min(_vsPageWraps.length - 1, lastVisible + VS_KEEP);
+
+  // Dispose window: beyond VS_DISPOSE from visible
+  const disposeFrom = firstVisible - VS_DISPOSE;
+  const disposeTo   = lastVisible  + VS_DISPOSE;
+
+  _vsPageWraps.forEach((w, i) => {
+    if (i < disposeFrom || i > disposeTo) {
+      // Far away — dispose canvas
+      const canvas = w.querySelector('canvas');
+      if (canvas) {
+        disposeCanvas(canvas);
+        canvas.remove();
+        w.dataset.rendered = '0';
+        w.style.background = '#e8e0d0';
+      }
+    } else if (i >= renderFrom && i <= renderTo) {
+      // In render window — queue if not rendered
+      if (w.dataset.rendered === '0') {
+        w.dataset.rendered = 'queued';
+        _vsRenderQueue.push({ pageWrap: w, pageNum: parseInt(w.dataset.page) });
+      }
+    }
+  });
+
+  _vsProcessQueue();
 }
 
-// ── Render queue processor — renders one page at a time to avoid RAM spike ──
-async function _enqueueRender(pageWrap, pageNum) {
-  _vsRenderQueue.push({ pageWrap, pageNum });
-}
-
-async function _processRenderQueue() {
+async function _vsProcessQueue() {
   if (_vsRendering) return;
   _vsRendering = true;
 
   while (_vsRenderQueue.length > 0) {
+    if (!scrollMode) break;
+
     const { pageWrap, pageNum } = _vsRenderQueue.shift();
     if (!pageWrap || pageWrap.dataset.rendered === '1') continue;
-    if (!document.body.classList.contains('scroll-mode')) break;
 
-    await _renderScrollPage(pageWrap, pageNum);
+    await _vsRenderPage(pageWrap, pageNum);
   }
 
   _vsRendering = false;
 }
 
-async function _renderScrollPage(pageWrap, pageNum) {
+async function _vsRenderPage(pageWrap, pageNum) {
   try {
     const { doc, localPage } = getDocAndPage(pageNum);
-    const pg   = await doc.getPage(localPage);
-    const dpr  = window.devicePixelRatio || 1;
+    const pg  = await doc.getPage(localPage);
+    const dpr = window.devicePixelRatio || 1;
 
-    const cssW    = parseInt(pageWrap.dataset.cssW);
-    const cssH    = parseInt(pageWrap.dataset.cssH);
+    const cssW     = parseInt(pageWrap.dataset.cssW);
+    const cssH     = parseInt(pageWrap.dataset.cssH);
     const cssScale = parseFloat(pageWrap.dataset.cssScale);
     const renderScale = cssScale * Math.max(dpr, renderQuality);
     const vp = pg.getViewport({ scale: renderScale });
 
-    // Remove existing canvas if re-rendering
+    // Remove old canvas
     const old = pageWrap.querySelector('canvas');
     if (old) { disposeCanvas(old); old.remove(); }
 
@@ -3224,9 +3223,7 @@ async function _renderScrollPage(pageWrap, pageNum) {
     canvas.style.width  = cssW + 'px';
     canvas.style.height = cssH + 'px';
 
-    // Insert before pnum
-    const pnum = pageWrap.querySelector('.scroll-pnum');
-    pageWrap.insertBefore(canvas, pnum);
+    pageWrap.insertBefore(canvas, pageWrap.querySelector('.scroll-pnum'));
 
     const ctx = canvas.getContext('2d');
     await pg.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
@@ -3234,7 +3231,7 @@ async function _renderScrollPage(pageWrap, pageNum) {
     pageWrap.dataset.rendered = '1';
     pageWrap.style.background = 'var(--cream)';
   } catch(e) {
-    console.warn(`Page ${pageNum} render failed:`, e);
+    console.warn(`Page ${pageNum} render failed:`, e.message);
     pageWrap.dataset.rendered = '0';
   }
 }
@@ -3245,18 +3242,29 @@ function enableScrollMode(on) {
   $('btn-scroll-mode').classList.toggle('active', on);
 
   if (on) {
-    renderScrollMode();
-    $('scroll-view').onscroll = syncScrollPageCounter;
+    renderScrollMode().then(() => {
+      // Trigger initial window update after placeholders are built
+      _vsUpdateWindow();
+    });
+
+    // Scroll event → update render window (debounced)
+    $('scroll-view').onscroll = () => {
+      syncScrollPageCounter();
+      clearTimeout(_vsScrollTimer);
+      _vsScrollTimer = setTimeout(_vsUpdateWindow, 100);
+    };
   } else {
-    // disconnect observer and dispose all scroll canvases
-    if (_vsObserver) { _vsObserver.disconnect(); _vsObserver = null; }
-    _vsRenderQueue = [];
-    _vsRendering   = false;
-    _scrollAbort   = true;
-    // dispose all canvases in scroll-pages
+    // Cleanup
+    clearTimeout(_vsScrollTimer);
+    _vsRenderQueue  = [];
+    _vsRendering    = false;
+    _vsPageWraps    = [];
+    _scrollAbort    = true;
+    $('scroll-view').onscroll = null;
+    // Dispose all canvases
     $('scroll-pages').querySelectorAll('canvas').forEach(disposeCanvas);
     $('scroll-pages').innerHTML = '';
-    // back to flip mode
+    // Back to flip mode
     renderSpread(currentSpread);
   }
 }
@@ -3465,12 +3473,14 @@ $('btn-back').addEventListener('click',()=>{
   // reset scroll mode
   if (scrollMode) {
     scrollMode = false;
-    _scrollAbort = true;
-    if (_vsObserver) { _vsObserver.disconnect(); _vsObserver = null; }
+    clearTimeout(_vsScrollTimer);
     _vsRenderQueue = [];
     _vsRendering   = false;
+    _vsPageWraps   = [];
+    _scrollAbort   = true;
     document.body.classList.remove('scroll-mode');
     $('btn-scroll-mode').classList.remove('active');
+    $('scroll-view').onscroll = null;
     $('scroll-pages').querySelectorAll('canvas').forEach(disposeCanvas);
     $('scroll-pages').innerHTML = '';
   }
