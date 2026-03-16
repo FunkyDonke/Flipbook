@@ -538,7 +538,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Hind Siliguri',ser
 
 /* Quality Slider */
 #quality-wrap {
-  display:flex;flex-direction:column;gap:5px;
+  display:flex;flex-direction:column;gap:6px;
   padding:8px 10px;
   background:rgba(0,0,0,.3);
   border:1px solid var(--border);
@@ -548,7 +548,22 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Hind Siliguri',ser
   display:flex;align-items:center;justify-content:space-between;
   font-size:11px;color:var(--gold);
 }
-#quality-wrap-label span { color:var(--text-dim); font-size:10px; }
+#quality-num-input {
+  width:48px;
+  background:rgba(0,0,0,.5);
+  border:1px solid var(--border2);
+  border-radius:5px;
+  color:var(--gold2);
+  font-size:11px;
+  text-align:center;
+  padding:2px 4px;
+  outline:none;
+  font-family:monospace;
+  -moz-appearance:textfield;
+}
+#quality-num-input::-webkit-outer-spin-button,
+#quality-num-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+#quality-num-input:focus { border-color:var(--gold); }
 #quality-slider {
   -webkit-appearance:none;appearance:none;
   width:100%;height:4px;
@@ -568,8 +583,12 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Hind Siliguri',ser
   width:14px;height:14px;border-radius:50%;
   background:var(--gold2);border:2px solid var(--wood);cursor:pointer;
 }
-/* hide in scroll mode */
-body.scroll-mode #quality-wrap { opacity:.35; pointer-events:none; }
+.quality-range-labels {
+  display:flex;justify-content:space-between;
+  font-size:9px;color:var(--text-dim);margin-top:-2px;
+}
+/* scroll mode — quality still applies */
+body.scroll-mode #quality-wrap { opacity:1; pointer-events:all; }
 
 /* panel content area (for TOC later) */
 #panel-content{
@@ -967,9 +986,10 @@ body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
       <div id="quality-wrap">
         <div id="quality-wrap-label">
           <span>🖼 Render Quality</span>
-          <span id="quality-label-val">2×</span>
+          <input type="number" id="quality-num-input" min="0.5" max="10" step="0.1" value="2" title="সরাসরি value টাইপ করুন"/>
         </div>
-        <input type="range" id="quality-slider" min="1" max="4" step="0.5" value="2"/>
+        <input type="range" id="quality-slider" min="0.5" max="10" step="0.1" value="2"/>
+        <div class="quality-range-labels"><span>0.5×</span><span>5×</span><span>10×</span></div>
       </div>
       <button class="panel-btn" id="btn-fs" title="Fullscreen">
         <svg id="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
@@ -2915,29 +2935,46 @@ const LS_QUALITY = 'dlib_render_quality';
 let renderQuality = parseFloat(localStorage.getItem(LS_QUALITY) || '2');
 
 function initQualitySlider() {
-  const slider = $('quality-slider');
-  const label  = $('quality-label-val');
-  if (!slider) return;
+  const slider   = $('quality-slider');
+  const numInput = $('quality-num-input');
+  if (!slider || !numInput) return;
 
   // restore saved value
-  slider.value = renderQuality;
-  label.textContent = renderQuality + '×';
+  slider.value   = renderQuality;
+  numInput.value = renderQuality;
   updateSliderTrack(slider);
 
   let _qualityTimer = null;
-  slider.addEventListener('input', () => {
-    renderQuality = parseFloat(slider.value);
-    label.textContent = renderQuality + '×';
-    updateSliderTrack(slider);
-    localStorage.setItem(LS_QUALITY, renderQuality);
 
-    // debounce re-render so it doesn't fire on every pixel drag
+  function applyQuality(val) {
+    // clamp between 0.5 and 10, round to 1 decimal
+    val = Math.round(Math.max(0.5, Math.min(10, val)) * 10) / 10;
+    renderQuality  = val;
+    slider.value   = val;
+    numInput.value = val;
+    updateSliderTrack(slider);
+    localStorage.setItem(LS_QUALITY, val);
+
+    // debounce re-render
     clearTimeout(_qualityTimer);
     _qualityTimer = setTimeout(async () => {
-      if (currentBook && !scrollMode && totalPages > 0) {
+      if (!currentBook || totalPages === 0) return;
+      if (scrollMode) {
+        // re-render scroll mode with new quality
+        await renderScrollMode();
+      } else {
         await renderSpread(currentSpread);
       }
-    }, 300);
+    }, 400);
+  }
+
+  // slider drag
+  slider.addEventListener('input', () => applyQuality(parseFloat(slider.value)));
+
+  // number input: apply on Enter or blur
+  numInput.addEventListener('change', () => applyQuality(parseFloat(numInput.value) || renderQuality));
+  numInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); applyQuality(parseFloat(numInput.value) || renderQuality); }
   });
 }
 
