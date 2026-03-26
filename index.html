@@ -1143,7 +1143,7 @@ body.scroll-mode #btn-mobile { opacity:.4;pointer-events:none; }
         </div>
         <div class="field" style="flex:2">
           <label>Web App URL</label>
-          <input id="ns-url" type="text" placeholder="(এখন Cloudflare Worker ব্যবহার হচ্ছে)" autocomplete="off" spellcheck="false" disabled style="opacity:0.5;cursor:not-allowed;"/>
+          <input id="ns-url" type="text" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" spellcheck="false"/>
         </div>
       </div>
       <button class="add-part-btn" id="btn-add-script" style="margin-bottom:16px;">
@@ -1428,31 +1428,27 @@ function parseClassTxt(text, classId) {
   }
 
   // Parse one source: line → array of parts
-  // New format: [FILE_ID] or [FILE_ID1, FILE_ID2]
-  // Old format: [script_url | FILE_ID] (backward compat)
+  // Format: [script1, script2, script3 / FILE_ID_PART1], [script4 / FILE_ID_PART2], ...
   function parseSourceLine(val) {
     const parts = [];
+    // match each [...] block
     const blockRe = /\[([^\]]+)\]/g;
     let m;
     while ((m = blockRe.exec(val)) !== null) {
       const inner = m[1].trim();
+      // separator is | (pipe) — scripts left, fileIds right
       const pipeIdx = inner.lastIndexOf('|');
-
-      if (pipeIdx < 0) {
-        // New format: শুধু File ID, script URL নেই
-        const fileIds = inner.split(',').map(s => s.trim()).filter(Boolean);
-        if (fileIds.length === 0) continue;
-        parts.push({ scriptUrls: [], fileIds });
-      } else {
-        // Old format: script_url | FILE_ID (backward compat)
-        const scriptsPart = inner.substring(0, pipeIdx).trim();
-        const fileIdsPart  = inner.substring(pipeIdx + 1).trim();
-        if (!fileIdsPart) continue;
-        const scriptUrls = scriptsPart.split(',').map(s => s.trim()).filter(Boolean);
-        const fileIds = fileIdsPart.split(',').map(s => s.trim()).filter(Boolean);
-        if (fileIds.length === 0) continue;
-        parts.push({ scriptUrls, fileIds });
-      }
+      if (pipeIdx < 0) continue;
+      const scriptsPart = inner.substring(0, pipeIdx).trim();
+      const fileIdsPart  = inner.substring(pipeIdx + 1).trim();
+      if (!fileIdsPart) continue;
+      // scripts: comma-separated URLs (random selection)
+      const scriptUrls = scriptsPart.split(',').map(s => s.trim()).filter(Boolean);
+      if (scriptUrls.length === 0) continue;
+      // fileIds: comma-separated IDs (sequential fallback)
+      const fileIds = fileIdsPart.split(',').map(s => s.trim()).filter(Boolean);
+      if (fileIds.length === 0) continue;
+      parts.push({ scriptUrls, fileIds });
     }
     return parts;
   }
@@ -1779,7 +1775,7 @@ function tryAutoSaveScript(){
   const url=$('ns-url').value.trim();
   const err=$('sm-err');
   if(!url) return;
-  if(!url && !name){ return; } // script modal unused now
+  if(!url.includes('script.google.com')){err.textContent='Not a valid Apps Script URL';return;}
   // auto-generate name if empty
   let name=$('ns-name').value.trim();
   if(!name) name='Script '+(scripts.length+1);
@@ -2392,15 +2388,28 @@ function showError(t,m){
   $('error-box').style.display='flex';
 }
 
-// ── Cloudflare Worker URL (Base64 encoded) ──
-const _W = atob('aHR0cHM6Ly9wZGYtcHJveHkuZmFydWstNDZjLndvcmtlcnMuZGV2Lz9pZD0=');
+// JSONP
+function jsonpFetch(url){
+  return new Promise((res,rej)=>{
+    const cb='_fb'+Date.now();
+    const s=document.createElement('script');
+    const t=setTimeout(()=>{cleanup();rej(new Error('Timeout'));},90000);
+    function cleanup(){clearTimeout(t);delete window[cb];s.remove();}
+    window[cb]=d=>{cleanup();res(d);};
+    s.src=url+'&callback='+cb;
+    s.onerror=()=>{cleanup();rej(new Error('Script load failed'));};
+    document.head.appendChild(s);
+  });
+}
 
-// ── Cloudflare Worker দিয়ে PDF fetch ──
-// scriptUrls parameter এখন ignore হয় — Worker URL ব্যবহার হয়
-// fileIds: sequentially try করে (fallback support)
+// ── Random script selection + failover ──
+// sources = [{ scriptUrls: [...], fileId: '...' }, ...]
+// প্রতিটা part-এর জন্য scriptUrls থেকে randomly একটা pick করে,
+// fail হলে বাকিগুলো randomly try করে।
+// scriptUrls: randomly shuffled, fileIds: tried sequentially
+// For each fileId (in order): try all scripts randomly → if all fail, next fileId
 async function fetchWithRandomFailover(scriptUrls, fileIds, cacheKeyStr) {
-
-  // 1. cache check
+  // 1. try cache first
   if (cacheKeyStr) {
     try {
       const cached = await cacheGet(cacheKeyStr);
@@ -2410,38 +2419,73 @@ async function fetchWithRandomFailover(scriptUrls, fileIds, cacheKeyStr) {
     } catch(e) { console.warn('Cache read failed', e); }
   }
 
+  // backward compat: fileIds can be a single string or array
   const ids = Array.isArray(fileIds) ? fileIds : [fileIds];
   if (!ids.length || !ids[0]) throw new Error('File ID দেওয়া হয়নি।');
+  if (!scriptUrls || scriptUrls.length === 0) throw new Error('Script URL দেওয়া হয়নি।');
 
-  let lastErr = null;
-
-  for (const fileId of ids) {
-    try {
-      const url = _W + encodeURIComponent(fileId);
-      const r = await fetch(url);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-
-      const buf = new Uint8Array(await r.arrayBuffer());
-
-      if (cacheKeyStr) {
-        try { await cacheSet(cacheKeyStr, buf); } catch(e) {}
-      }
-
-      return pdfjsLib.getDocument({ data: buf }).promise;
-
-    } catch(e) {
-      lastErr = e;
-      console.warn(`Worker fetch failed for fileId: ${fileId}:`, e.message);
+  // 2. shuffle scriptUrls randomly (Fisher-Yates) — done once, reused per fileId
+  function shuffled(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
     }
+    return a;
   }
 
-  throw new Error('PDF লোড করা যায়নি। Error: ' + (lastErr?.message || 'unknown'));
+  // 3. outer loop: fileIds sequentially
+  let lastErr = null;
+  for (const fileId of ids) {
+    // inner loop: scripts randomly
+    const urls = shuffled(scriptUrls);
+    let fileSuccess = false;
+
+    for (const scriptUrl of urls) {
+      try {
+        const url = scriptUrl + '?fileId=' + encodeURIComponent(fileId);
+        let json;
+        try {
+          const r = await fetch(url, { redirect: 'follow' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          json = await r.json();
+        } catch(e) {
+          json = await jsonpFetch(url);
+        }
+        if (json.error) throw new Error('Script error: ' + json.error);
+        if (!json.data)  throw new Error('No PDF data');
+
+        const bin = atob(json.data), buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+
+        if (cacheKeyStr) {
+          try { await cacheSet(cacheKeyStr, buf); } catch(e) {}
+        }
+        return pdfjsLib.getDocument({ data: buf }).promise;
+
+      } catch(e) {
+        lastErr = e;
+        console.warn(`Failed (script: ${scriptUrl}, fileId: ${fileId}):`, e.message);
+      }
+    }
+    // all scripts failed for this fileId → try next fileId
+    console.warn(`All scripts failed for fileId: ${fileId}, trying backup...`);
+  }
+
+  throw new Error('সব File ID ও Script fail করেছে। শেষ error: ' + (lastErr?.message || 'unknown'));
 }
 
 // backward compat wrapper
 async function fetchPDFDoc(scriptId, fileId, cacheKeyStr, scriptUrl) {
+  let urls = [];
+  if (scriptUrl) urls = [scriptUrl];
+  else if (scriptId) {
+    const obj = scripts.find(s => s.id === scriptId);
+    if (obj) urls = [obj.url];
+  }
+  // fileId can be a string (single) or array
   const ids = Array.isArray(fileId) ? fileId : [fileId];
-  return fetchWithRandomFailover([], ids, cacheKeyStr);
+  return fetchWithRandomFailover(urls, ids, cacheKeyStr);
 }
 
 // ═══════════════════════════════════════════

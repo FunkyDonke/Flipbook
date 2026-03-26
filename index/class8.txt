@@ -2,7 +2,7 @@
 icon: https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiQ5BJMCr33KD2TSbFMpdylhadHFgRd9PPooC0RV0cSdD3j8EGC3iEE-QNBCN0dZ_uePCbeIIT_YugYajIwbckcMvElpStayUiX2muSA0e3vM5vHU08PeV0CrKEvbCpGYDnHmguvxdaNiMTfqYDg8RXcsKdRk466bnGOcTug0Xg37927VoAcTvXL9zcsXIU/s16000-rw/1000102366.jpg
 #গদ্য
 -১. অতিথির স্মৃতি - শরৎচন্দ্র চট্টোপাধ্যায় (পৃষ্ঠা ১)
-source: [1LKq2Me1psZ0llupYPlvP44dLb4fmaIYW]
+source: [https://script.google.com/macros/s/AKfycbwcyx_ihig0S1SUcnEJs7jhf_wZf4ToiPXZ6vVbPJpm54co90ux4TLcOHxuGlqgEhcNmw/exec | 1LKq2Me1psZ0llupYPlvP44dLb4fmaIYW]
 -২. পড়ে পাওয়া - বিভূতিভূষণ বন্দ্যোপাধ্যায় (পৃষ্ঠা ৭)
 -৩. ভাব ও কাজ - কাজী নজরুল ইসলাম (পৃষ্ঠা ১৬)
 -৪. লাইব্রেরি - মোতাহের হোসেন চৌধুরী (পৃষ্ঠা ২২)
